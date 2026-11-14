@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { Store, deviceStatus } from './src/db.js';
+import { Store, deviceStatus, macToCode, normCode } from './src/db.js';
 import { CatalogStore } from './src/catalog.js';
 import { pub } from './src/m3u.js';
 import { GamesService, matchChannels } from './src/games.js';
@@ -263,7 +263,8 @@ export function createApp(options = {}) {
   // ---------------------------------------------------------------- autenticação
   async function deviceCtx(req, ip, allowInactive) {
     if (failLimiter.blocked(ip)) throw new HttpError(429, 'too_many_attempts');
-    const mac = normMac(req.headers['x-mac']);
+    const rawMac = req.headers['x-mac'] || req.headers['x-code'];
+    const mac = normMac(rawMac) || normCode(rawMac);
     const key = normKey(req.headers['x-key']);
     let d = mac && key ? store.getDevice(mac) : null;
     if (!d && mac && key && cfg.autoRegister) {
@@ -472,7 +473,7 @@ export function createApp(options = {}) {
     store.touchDevice(mac, ip);
 
     // Pré-carrega o catálogo em segundo plano para o Início abrir instantaneamente
-    catalogs.get(m3uUrl).catch(() => {});
+    catalogs.get(m3uUrl).catch(() => { });
 
     return {
       ok: true,
@@ -502,6 +503,108 @@ export function createApp(options = {}) {
       template: getM3uTemplate(),
       output: xtreamOutput()
     };
+  });
+
+  // ================================================================ 🏧 Ativação e Gerenciamento de Dispositivos
+  add('GET', '/api/v1/devices', async () => {
+    const list = store.listDevices();
+    const formatted = list.map(d => ({
+      code: macToCode(d.mac),
+      mac: d.mac,
+      key: d.device_key,
+      name: d.name || 'Sem nome',
+      m3u_url: d.m3u_url,
+      status: deviceStatus(d),
+      last_seen: d.last_seen,
+      created_at: d.created_at,
+      expires_at: d.expires_at
+    }));
+    return {
+      total: formatted.length,
+      active: formatted.filter(d => d.status === 'active').length,
+      pending: formatted.filter(d => d.status !== 'active').length,
+      devices: formatted
+    };
+  });
+
+  add('POST', '/api/v1/devices/activate', async (ctx) => {
+    const { code, name, m3uUrl } = ctx.body || {};
+    if (!code) throw new HttpError(400, 'missing_code', { message: 'Informe o código do aparelho.' });
+    if (!m3uUrl) throw new HttpError(400, 'missing_m3u', { message: 'Informe o link da lista M3U.' });
+
+    const rawMac = normMac(code) || normCode(code);
+    if (!rawMac) throw new HttpError(400, 'invalid_code', { message: 'Código de ativação inválido.' });
+
+    let d = store.getDevice(rawMac);
+    if (!d) {
+      // Device ainda não registrou: cria SEM device_key (o device vai registrar via /register)
+      d = store.createDevice({
+        mac: rawMac,
+        name: (name || 'Dispositivo').trim(),
+        m3uUrl: m3uUrl.trim(),
+        status: 'active'
+      });
+    } else {
+      // Device já existe: atualiza nome, m3u e status — NÃO altera device_key (mantém a do device)
+      d = store.updateDevice(rawMac, {
+        name: (name || d.name || 'Dispositivo').trim(),
+        m3u_url: m3uUrl.trim(),
+        status: 'active'
+      });
+    }
+
+    // Prefetch da playlist para abrir instantaneamente no aparelho ativado
+    catalogs.get(m3uUrl.trim()).catch(() => {});
+
+    return {
+      ok: true,
+      message: 'Aparelho ativado com sucesso!',
+      device: {
+        code: macToCode(d.mac),
+        mac: d.mac,
+        name: d.name,
+        m3u_url: d.m3u_url,
+        status: deviceStatus(d)
+      }
+    };
+  });
+
+  add('PUT', '/api/v1/devices/:code', async (ctx) => {
+    const { code } = ctx.params;
+    const { name, m3uUrl } = ctx.body || {};
+    const rawMac = normMac(code) || normCode(code);
+    if (!rawMac) throw new HttpError(400, 'invalid_code');
+
+    const d = store.getDevice(rawMac);
+    if (!d) throw new HttpError(404, 'device_not_found', { message: 'Aparelho não encontrado.' });
+
+    const fields = {};
+    if (name !== undefined) fields.name = String(name).trim();
+    if (m3uUrl !== undefined) {
+      fields.m3u_url = String(m3uUrl).trim();
+      fields.status = 'active';
+      catalogs.get(fields.m3u_url).catch(() => {});
+    }
+
+    const updated = store.updateDevice(rawMac, fields);
+    return {
+      ok: true,
+      device: {
+        code: macToCode(updated.mac),
+        mac: updated.mac,
+        name: updated.name,
+        m3u_url: updated.m3u_url,
+        status: deviceStatus(updated)
+      }
+    };
+  });
+
+  add('DELETE', '/api/v1/devices/:code', async (ctx) => {
+    const { code } = ctx.params;
+    const rawMac = normMac(code) || normCode(code);
+    if (!rawMac) throw new HttpError(400, 'invalid_code');
+    const ok = store.deleteDevice(rawMac);
+    return { ok };
   });
 
   add(

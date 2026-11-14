@@ -19,9 +19,25 @@ export function deviceStatus(d, now = Date.now()) {
   return 'active';
 }
 
+export function macToCode(mac) {
+  if (!mac) return '';
+  return 'BOX-' + String(mac).toUpperCase().replace(/[^0-9A-F]/g, '');
+}
+
+export function normCode(s) {
+  if (!s) return null;
+  const clean = String(s).toUpperCase().replace(/[^0-9A-F]/g, '');
+  if (clean.length === 12) {
+    return clean.match(/.{2}/g).join(':');
+  }
+  return clean || null;
+}
+
 export class Store {
   constructor(dataDir) {
     fs.mkdirSync(dataDir, { recursive: true });
+    this.dataDir = dataDir;
+    this.devicesJsonPath = path.join(dataDir, 'devices.json');
     this.db = new DatabaseSync(path.join(dataDir, 'panel.db'));
     this.db.exec(`
       PRAGMA journal_mode = WAL;
@@ -127,6 +143,41 @@ export class Store {
          ON CONFLICT(key) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at`
       ),
     };
+    this._restoreDevicesFromJson();
+  }
+
+  _restoreDevicesFromJson() {
+    try {
+      if (!fs.existsSync(this.devicesJsonPath)) return;
+      const count = this.db.prepare('SELECT COUNT(*) as c FROM devices').get().c;
+      if (count > 0) return;
+      const list = JSON.parse(fs.readFileSync(this.devicesJsonPath, 'utf8'));
+      if (Array.isArray(list)) {
+        for (const d of list) {
+          if (d.mac) {
+            this.db.prepare(`
+              INSERT OR REPLACE INTO devices (mac, device_key, name, notes, m3u_url, status, expires_at, created_at, last_seen, last_ip, app_version, model)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              d.mac, nz(d.device_key), d.name || '', d.notes || '', d.m3u_url || '',
+              d.status || 'active', nz(d.expires_at), d.created_at || Date.now(),
+              nz(d.last_seen), nz(d.last_ip), nz(d.app_version), nz(d.model)
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao restaurar devices.json:', e);
+    }
+  }
+
+  _persistDevicesToJson() {
+    try {
+      const rows = this.db.prepare('SELECT * FROM devices ORDER BY COALESCE(last_seen, created_at) DESC').all();
+      fs.writeFileSync(this.devicesJsonPath, JSON.stringify(rows, null, 2));
+    } catch (e) {
+      console.error('Erro ao salvar devices.json:', e);
+    }
   }
 
   // ---- dispositivos ----
@@ -134,9 +185,12 @@ export class Store {
     return this.s.getDevice.get(mac) ?? null;
   }
 
-  createDevice({ mac, key = null, name = '', notes = '', m3uUrl = '', status = 'active', expiresAt = null }) {
-    this.s.insertDevice.run(mac, nz(key), name, notes, m3uUrl, status, nz(expiresAt), Date.now());
-    return this.getDevice(mac);
+  createDevice({ mac, key = null, name = '', notes = '', m3uUrl = '', m3u_url, status = 'active', expiresAt = null }) {
+    const url = m3u_url !== undefined ? m3u_url : m3uUrl;
+    this.s.insertDevice.run(mac, nz(key), name, notes, url || '', status, nz(expiresAt), Date.now());
+    const dev = this.getDevice(mac);
+    this._persistDevicesToJson();
+    return dev;
   }
 
   updateDevice(mac, fields) {
@@ -151,7 +205,9 @@ export class Store {
     }
     if (!sets.length) return this.getDevice(mac);
     this.db.prepare(`UPDATE devices SET ${sets.join(', ')} WHERE mac = ?`).run(...vals, mac);
-    return this.getDevice(mac);
+    const dev = this.getDevice(mac);
+    this._persistDevicesToJson();
+    return dev;
   }
 
   touchDevice(mac, ip, appVersion = null, model = null) {
@@ -161,7 +217,9 @@ export class Store {
   deleteDevice(mac) {
     this.s.deleteFavs.run(mac);
     this.s.deleteProg.run(mac);
-    return this.s.deleteDevice.run(mac).changes > 0;
+    const res = this.s.deleteDevice.run(mac).changes > 0;
+    this._persistDevicesToJson();
+    return res;
   }
 
   listDevices(search = '') {

@@ -1,0 +1,30 @@
+[
+  {
+    "mac": "C2:0E:A4:0D:76:0C",
+    "device_key": "F8RM5GKX",
+    "name": "Nando5247",
+    "notes": "Ativado via BoxTv",
+    "m3u_url": "http://vyrqulano.online/get.php?username=Nando5247&password=dede12346&type=m3u_plus&output=ts",
+    "status": "active",
+    "expires_at": 2031533999000,
+    "created_at": 1794352182095,
+    "last_seen": 1794622261152,
+    "last_ip": "127.0.0.1",
+    "app_version": "web-1.0",
+    "model": "Win32"
+  },
+  {
+    "mac": "F2:E8:08:E8:84:81",
+    "device_key": "9DRF586Z",
+    "name": "Dispositivo 2",
+    "notes": "",
+    "m3u_url": "http://vyrqulano.online/get.php?username=Nando5247&password=dede12346&type=m3u_plus&output=ts",
+    "status": "active",
+    "expires_at": null,
+    "created_at": 1794432991370,
+    "last_seen": 1794432991424,
+    "last_ip": "127.0.0.1",
+    "app_version": "web-1.0",
+    "model": "Win32"
+  }
+]

@@ -130,3 +130,17 @@ export const proxyAbs = (p) => (p.startsWith('http') ? p : API_BASE + p);
 /** Ativação pelo próprio app: manda a lista; o painel confere e só grava se funcionar. */
 export const activate = (m3uUrl) =>
   api('/activate', { method: 'POST', body: { mac: identity.mac, key: identity.key, m3uUrl } });
+
+// ====================================================================== 🏧 Dispositivos e Ativação Remota
+export const getDeviceCode = () => 'BOX-' + identity.mac.toUpperCase().replace(/[^0-9A-F]/g, '');
+
+export const listDevices = () => api('/devices');
+
+export const activateDevice = (code, name, m3uUrl) =>
+  api('/devices/activate', { method: 'POST', body: { code, name, m3uUrl } });
+
+export const editDevice = (code, name, m3uUrl) =>
+  api('/devices/' + encodeURIComponent(code), { method: 'PUT', body: { name, m3uUrl } });
+
+export const removeDevice = (code) =>
+  api('/devices/' + encodeURIComponent(code), { method: 'DELETE' });
