@@ -347,8 +347,8 @@ export function createApp(options = {}) {
   add('GET', '/healthz', () => ({ ok: true }));
 
   add('POST', '/api/v1/register', (ctx) => {
-    const mac = normMac(ctx.body.mac);
-    const key = normKey(ctx.body.key);
+    const mac = normMac(ctx.body?.mac) || normMac(ctx.req.headers['x-mac']);
+    const key = normKey(ctx.body?.key) || normKey(ctx.req.headers['x-key']);
     if (!mac || !key) throw new HttpError(400, 'invalid_mac_or_key');
     const existing = store.getDevice(mac);
     if (!existing) {
