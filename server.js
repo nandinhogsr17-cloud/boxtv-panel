@@ -54,7 +54,7 @@ export function createApp(options = {}) {
     port: Number(options.port ?? env.PORT ?? 8080),
     dataDir: options.dataDir ?? env.DATA_DIR ?? path.join(__dirname, 'data'),
     adminUser: options.adminUser ?? env.ADMIN_USER ?? 'admin',
-    adminPassword: options.adminPassword ?? env.ADMIN_PASSWORD ?? '',
+    adminPassword: options.adminPassword ?? env.ADMIN_PASSWORD ?? 'admin123',
     footballToken: options.footballToken ?? env.FOOTBALL_DATA_TOKEN ?? '',
     competitions: options.competitions ?? env.FOOTBALL_COMPETITIONS ?? '',
     tmdbKey: options.tmdbKey ?? env.TMDB_KEY ?? '',
@@ -70,7 +70,7 @@ export function createApp(options = {}) {
     streamUa: options.streamUa ?? env.STREAM_UA ?? 'VLC/3.0.20 LibVLC/3.0.20',
     // Ativação feita pelo próprio cliente (site /ativar ou dentro do app)
     selfActivate: (options.selfActivate ?? env.SELF_ACTIVATE ?? '1') !== '0' && options.selfActivate !== false,
-    xtreamHost: options.xtreamHost ?? env.DEFAULT_XTREAM_HOST ?? '', // servidor fixo: o cliente só digita usuário e senha
+    xtreamHost: options.xtreamHost ?? env.DEFAULT_XTREAM_HOST ?? 'http://yuzantor.online:80', // servidor fixo: o cliente só digita usuário e senha
     xtreamOutput: options.xtreamOutput ?? env.DEFAULT_XTREAM_OUTPUT ?? 'mpegts',
     activateMax: Number(options.activateMax ?? env.ACTIVATE_MAX ?? 15), // tentativas de ativação por IP a cada 10 min
     selfDays: Number(options.selfDays ?? env.SELF_DAYS ?? 0), // validade dada à ativação do cliente (0 = sem validade)
@@ -80,8 +80,7 @@ export function createApp(options = {}) {
 
   let generatedPassword = false;
   if (!cfg.adminPassword) {
-    cfg.adminPassword = crypto.randomBytes(9).toString('base64url');
-    generatedPassword = true;
+    cfg.adminPassword = 'admin123';
   }
 
   const store = new Store(cfg.dataDir);

@@ -66,7 +66,7 @@ export class CatalogStore {
       const res = await this.fetchFn(url, {
         headers: { 'user-agent': this.userAgent },
         redirect: 'follow',
-        signal: AbortSignal.timeout(90000),
+        signal: AbortSignal.timeout(180000),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       let text = await res.text();

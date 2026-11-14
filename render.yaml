@@ -23,3 +23,5 @@ services:
         value: "1"
       - key: WEB_SECRET
         value: meu-segredo-local-2024
+      - key: DEFAULT_XTREAM_HOST
+        value: http://yuzantor.online:80

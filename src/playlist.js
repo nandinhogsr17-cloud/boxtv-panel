@@ -9,7 +9,7 @@ export function guardedFetch({ allowPrivate = false, userAgent = 'IPTVPanel/1.0'
     const { res } = await safeGet(String(url), {
       headers: { 'user-agent': userAgent, ...(opts.headers || {}) },
       allowPrivate,
-      timeoutMs: 30000,
+      timeoutMs: 180000,
       signal: opts.signal,
     });
     const buf = await readLimited(res, MAX_PLAYLIST_BYTES);
