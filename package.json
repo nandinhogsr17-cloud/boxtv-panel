@@ -1,0 +1,14 @@
+{
+  "name": "iptv-panel",
+  "version": "1.0.0",
+  "description": "Painel e API para o app IPTV (ativação por MAC, catálogo M3U, favoritos, continuar assistindo, jogos de hoje)",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --disable-warning=ExperimentalWarning test/run-tests.js && node --disable-warning=ExperimentalWarning test/web-tests.js && node --disable-warning=ExperimentalWarning test/activate-tests.js && node --disable-warning=ExperimentalWarning test/integrations-tests.js"
+  }
+}

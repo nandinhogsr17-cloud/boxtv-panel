@@ -1,0 +1,337 @@
+[
+  {
+    "category_id": "416",
+    "category_name": "⚽ Guia de Jogos",
+    "parent_id": 0
+  },
+  {
+    "category_id": "253",
+    "category_name": "🛡️ Área do Cliente",
+    "parent_id": 0
+  },
+  {
+    "category_id": "234",
+    "category_name": "🌾 A Fazenda 18",
+    "parent_id": 0
+  },
+  {
+    "category_id": "191",
+    "category_name": "Canais ⫸ Globo Sul",
+    "parent_id": 0
+  },
+  {
+    "category_id": "192",
+    "category_name": "Canais ⫸ Globo Sudeste",
+    "parent_id": 0
+  },
+  {
+    "category_id": "193",
+    "category_name": "Canais ⫸ Globo Centro-Oeste",
+    "parent_id": 0
+  },
+  {
+    "category_id": "194",
+    "category_name": "Canais ⫸ Globo Norte e Noroeste",
+    "parent_id": 0
+  },
+  {
+    "category_id": "195",
+    "category_name": "Canais ⫸ Globo Nordeste",
+    "parent_id": 0
+  },
+  {
+    "category_id": "108",
+    "category_name": "Canais ⫸ Abertos",
+    "parent_id": 0
+  },
+  {
+    "category_id": "119",
+    "category_name": "Canais ⫸ Rede Record",
+    "parent_id": 0
+  },
+  {
+    "category_id": "121",
+    "category_name": "Canais ⫸ Rede Band",
+    "parent_id": 0
+  },
+  {
+    "category_id": "120",
+    "category_name": "Canais ⫸ Rede SBT",
+    "parent_id": 0
+  },
+  {
+    "category_id": "238",
+    "category_name": "Canais ⫸ SBT+",
+    "parent_id": 0
+  },
+  {
+    "category_id": "242",
+    "category_name": "Canais ⫸ Eventos Netflix",
+    "parent_id": 0
+  },
+  {
+    "category_id": "111",
+    "category_name": "Canais ⫸ Noticias",
+    "parent_id": 0
+  },
+  {
+    "category_id": "102",
+    "category_name": "Canais ⫸ Esportes⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "106",
+    "category_name": "Canais ⫸ Premiere⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "221",
+    "category_name": "Canais ⫸ SporTV⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "220",
+    "category_name": "Canais ⫸ ESPN & TNT Sports⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "219",
+    "category_name": "Canais ⫸ Max & Disney+⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "222",
+    "category_name": "Canais ⫸ Prime VIDEO e DAZN⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "235",
+    "category_name": "Canais ⫸ Paramount+⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "237",
+    "category_name": "Canais ⫸ PPV GOAT⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "255",
+    "category_name": "Canais ⫸ PPV BJJ",
+    "parent_id": 0
+  },
+  {
+    "category_id": "359",
+    "category_name": "Canais ⫸ Youtube⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "197",
+    "category_name": "Canais ⫸ PPV Cazé⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "249",
+    "category_name": "Canais ⫸ XSports⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "246",
+    "category_name": "Canais ⫸ PPV Kings League BR⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "256",
+    "category_name": "Canais ⫸ PPV Desimpedidos TV",
+    "parent_id": 0
+  },
+  {
+    "category_id": "114",
+    "category_name": "Canais ⫸ PPV Esportes 1⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "236",
+    "category_name": "Canais ⫸ PPV Estaduais 2025⚽",
+    "parent_id": 0
+  },
+  {
+    "category_id": "181",
+    "category_name": "Canais ⫸ PPV UFC Fight Pass",
+    "parent_id": 0
+  },
+  {
+    "category_id": "118",
+    "category_name": "Canais ⫸ UHD 4K",
+    "parent_id": 0
+  },
+  {
+    "category_id": "189",
+    "category_name": "Canais ⫸ PPV NBA League Pass",
+    "parent_id": 0
+  },
+  {
+    "category_id": "183",
+    "category_name": "Canais ⫸ PPV NFL Now",
+    "parent_id": 0
+  },
+  {
+    "category_id": "103",
+    "category_name": "Canais ⫸ Filmes e Séries",
+    "parent_id": 0
+  },
+  {
+    "category_id": "104",
+    "category_name": "Canais ⫸ Telecine",
+    "parent_id": 0
+  },
+  {
+    "category_id": "105",
+    "category_name": "Canais ⫸ HBO",
+    "parent_id": 0
+  },
+  {
+    "category_id": "107",
+    "category_name": "Canais ⫸ Infantil",
+    "parent_id": 0
+  },
+  {
+    "category_id": "110",
+    "category_name": "Canais ⫸ Documentarios",
+    "parent_id": 0
+  },
+  {
+    "category_id": "187",
+    "category_name": "Canais ⫸ Variedades",
+    "parent_id": 0
+  },
+  {
+    "category_id": "257",
+    "category_name": "Canais ⫸ Novelas 24h",
+    "parent_id": 0
+  },
+  {
+    "category_id": "258",
+    "category_name": "Canais ⫸ Cinema 24h",
+    "parent_id": 0
+  },
+  {
+    "category_id": "112",
+    "category_name": "Canais ⫸ Religiosos",
+    "parent_id": 0
+  },
+  {
+    "category_id": "126",
+    "category_name": "Canais ⫸ Pluto TV",
+    "parent_id": 0
+  },
+  {
+    "category_id": "127",
+    "category_name": "Canais ⫸ Música",
+    "parent_id": 0
+  },
+  {
+    "category_id": "185",
+    "category_name": "Canais ⫸ Rádios",
+    "parent_id": 0
+  },
+  {
+    "category_id": "113",
+    "category_name": "Canais ⫸ Cine SKY",
+    "parent_id": 0
+  },
+  {
+    "category_id": "231",
+    "category_name": "Especial ⫸ 24h",
+    "parent_id": 0
+  },
+  {
+    "category_id": "128",
+    "category_name": "Canais ⫸ Desenhos 24h",
+    "parent_id": 0
+  },
+  {
+    "category_id": "198",
+    "category_name": "Canais ⫸ Premium 24h",
+    "parent_id": 0
+  },
+  {
+    "category_id": "245",
+    "category_name": "Canais ⫸ Marvel 24h",
+    "parent_id": 0
+  },
+  {
+    "category_id": "109",
+    "category_name": "Canais ⫸ Series 24h",
+    "parent_id": 0
+  },
+  {
+    "category_id": "199",
+    "category_name": "Canais ⫸ Shows 24h",
+    "parent_id": 0
+  },
+  {
+    "category_id": "178",
+    "category_name": "Canais | Argentina",
+    "parent_id": 0
+  },
+  {
+    "category_id": "179",
+    "category_name": "Canais | Colombia",
+    "parent_id": 0
+  },
+  {
+    "category_id": "117",
+    "category_name": "Canais | Latinos",
+    "parent_id": 0
+  },
+  {
+    "category_id": "123",
+    "category_name": "Canais | Mexico",
+    "parent_id": 0
+  },
+  {
+    "category_id": "125",
+    "category_name": "Canais | Paraguay",
+    "parent_id": 0
+  },
+  {
+    "category_id": "124",
+    "category_name": "Canais | Equador",
+    "parent_id": 0
+  },
+  {
+    "category_id": "115",
+    "category_name": "Canais | USA Regional",
+    "parent_id": 0
+  },
+  {
+    "category_id": "174",
+    "category_name": "Canais | USA News",
+    "parent_id": 0
+  },
+  {
+    "category_id": "173",
+    "category_name": "Canais | USA Kids",
+    "parent_id": 0
+  },
+  {
+    "category_id": "176",
+    "category_name": "Canais | USA Music",
+    "parent_id": 0
+  },
+  {
+    "category_id": "177",
+    "category_name": "Canais | USA Filmes e Series",
+    "parent_id": 0
+  },
+  {
+    "category_id": "171",
+    "category_name": "Canais | USA Documentarios",
+    "parent_id": 0
+  },
+  {
+    "category_id": "172",
+    "category_name": "Canais | USA Entretenimento",
+    "parent_id": 0
+  }
+]

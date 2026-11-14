@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#181528"/>
+      <stop offset="50%" stop-color="#0f0c1b"/>
+      <stop offset="100%" stop-color="#07050e"/>
+    </linearGradient>
+    <linearGradient id="neonGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff0055"/>
+      <stop offset="50%" stop-color="#ff3366"/>
+      <stop offset="100%" stop-color="#7928ca"/>
+    </linearGradient>
+    <linearGradient id="tvScreen" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2a2444"/>
+      <stop offset="100%" stop-color="#131024"/>
+    </linearGradient>
+    <linearGradient id="playGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f0f0ff"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Fundo com cantos arredondados Squircle modernos -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)"/>
+  
+  <!-- Borda luminosa futurista -->
+  <rect x="16" y="16" width="480" height="480" rx="116" fill="none" stroke="url(#neonGlow)" stroke-width="6" opacity="0.4"/>
+
+  <!-- Antena / Transmissão Wireless -->
+  <path d="M 200 120 Q 256 75 312 120" fill="none" stroke="url(#neonGlow)" stroke-width="12" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 226 142 Q 256 112 286 142" fill="none" stroke="url(#neonGlow)" stroke-width="10" stroke-linecap="round"/>
+
+  <!-- Moldura TV Box com efeito 3D -->
+  <rect x="80" y="160" width="352" height="248" rx="36" fill="url(#neonGlow)" filter="url(#glow)"/>
+  <rect x="86" y="166" width="340" height="236" rx="30" fill="url(#tvScreen)"/>
+
+  <!-- Luz reflexo na tela de vidro -->
+  <path d="M 96 176 L 260 176 L 150 390 L 96 390 Z" fill="#ffffff" opacity="0.04"/>
+
+  <!-- Botão Play Dinâmico -->
+  <polygon points="228,228 324,284 228,340" fill="url(#playGrad)" filter="url(#glow)"/>
+
+  <!-- LED indicador de status BoxTv -->
+  <circle cx="256" cy="442" r="8" fill="#00ffcc" filter="url(#glow)"/>
+</svg>

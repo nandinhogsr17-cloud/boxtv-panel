@@ -1,0 +1,39 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="globo.sp" tvg-logo="http://img.example/globo.png" group-title="CANAIS | ABERTOS",Globo SP FHD
+http://stream.example/live/u/p/1001.ts
+#EXTINF:-1 tvg-id="sportv" tvg-logo="http://img.example/sportv.png" group-title="CANAIS | ESPORTES",SporTV 1 HD
+http://stream.example/live/u/p/1002.ts
+#EXTINF:-1 tvg-id="sportv2" tvg-logo="" group-title="CANAIS | ESPORTES",SporTV 2 FHD
+http://stream.example/live/u/p/1003.ts
+#EXTINF:-1 tvg-id="premiere1" tvg-logo="" group-title="CANAIS | ESPORTES",PREMIERE 1 FHD
+http://stream.example/live/u/p/1004.ts
+#EXTINF:-1 tvg-id="espn" tvg-logo="" group-title="CANAIS | ESPORTES",ESPN Brasil HD
+http://stream.example/live/u/p/1005.m3u8
+#EXTINF:-1 tvg-id="" tvg-logo="" group-title="EVENTOS",Flamengo x Palmeiras - 16h
+http://stream.example/live/u/p/1006.m3u8
+#EXTINF:-1 tvg-id="cnn" tvg-logo="" group-title="CANAIS | NOTICIAS",CNN Brasil
+http://stream.example/live/u/p/1007.ts
+#EXTINF:-1 tvg-id="" tvg-logo="" group-title="FILMES 24H",Filmes 24h Acao
+http://stream.example/live/u/p/1008.m3u8
+#EXTINF:-1 tvg-id="" tvg-logo="http://img.example/matrix.jpg" group-title="FILMES | ACAO",Matrix (1999) [DUB] FHD
+http://stream.example/movie/u/p/2001.mp4
+#EXTINF:-1 tvg-id="" tvg-logo="http://img.example/inception.jpg" group-title="FILMES | FICCAO",Inception 2010 LEG
+http://stream.example/movie/u/p/2002.mkv
+#EXTINF:-1 tvg-id="" tvg-logo="" group-title="FILMES | FICCAO",Blade Runner 2049 4K
+http://stream.example/movie/u/p/2003.mkv
+#EXTINF:-1 tvg-id="" tvg-logo="http://img.example/bb.jpg" group-title="SERIES | DRAMA",Breaking Bad S01E01 - Piloto
+http://stream.example/series/u/p/3001.mp4
+#EXTINF:-1 tvg-id="" tvg-logo="http://img.example/bb1.jpg" group-title="SERIES | DRAMA",Breaking Bad S01E02 - O Gato
+http://stream.example/series/u/p/3002.mp4
+#EXTINF:-1 tvg-id="" tvg-logo="" group-title="SERIES | DRAMA",Breaking Bad S01E03
+http://stream.example/series/u/p/3003.mp4
+#EXTINF:-1 tvg-id="" tvg-logo="" group-title="SERIES | DRAMA",Breaking Bad S02E01 - Sete Trinta e Sete
+http://stream.example/series/u/p/3004.mp4
+#EXTINF:-1 tvg-id="" tvg-logo="http://img.example/office.jpg" group-title="SERIES | COMEDIA",The Office US S01E01
+http://stream.example/series/u/p/3005.mp4
+#EXTINF:-1 tvg-id="" tvg-logo="" group-title="SERIES | COMEDIA",The Office US 1x02 Diversidade
+http://stream.example/series/u/p/3006.mp4
+#EXTINF:-1 tvg-id="" tvg-logo="" group-title="",Canal Sem Grupo
+http://stream.example/live/u/p/1009.ts
+#EXTINF:-1 tvg-id="globo.sp" tvg-logo="" group-title="CANAIS | ABERTOS",Globo SP FHD (duplicado)
+http://stream.example/live/u/p/1001.ts

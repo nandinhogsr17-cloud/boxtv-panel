@@ -1,0 +1,10 @@
+Players de vídeo do site (opcional: cópia local)
+
+O site tenta carregar estes arquivos daqui e, se não existirem, usa o CDN (jsdelivr).
+Para funcionar sem depender de CDN, baixe e coloque nesta pasta:
+
+  hls.min.js   <- https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js
+  mpegts.js    <- https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js
+
+hls.js: toca HLS (.m3u8).  mpegts.js: toca canais ao vivo em .ts (o formato mais comum de IPTV).
+Ambos são open source: confira a licença de cada um antes de redistribuir.

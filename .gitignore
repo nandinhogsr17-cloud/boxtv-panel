@@ -1,0 +1,5 @@
+node_modules/
+data/*.db*
+data/*.m3u*
+.env
+.DS_Store
