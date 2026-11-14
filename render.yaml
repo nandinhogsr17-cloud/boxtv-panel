@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: boxtv-panel
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: ""
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 22.13.0
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASSWORD
+        value: admin123
+      - key: AUTO_REGISTER
+        value: "1"
+      - key: SELF_ACTIVATE
+        value: "1"
+      - key: SELF_DAYS
+        value: "0"
+      - key: SELF_REPLACE
+        value: "1"
+      - key: WEB_SECRET
+        value: meu-segredo-local-2024
