@@ -358,7 +358,7 @@ export function createApp(options = {}) {
   async function gamesFor(cat, reqDate = null) {
     const isAll = reqDate === 'all';
     const games = isAll ? await gamesSvc.allWeekly() : await gamesSvc.forDate(reqDate || gamesSvc.today());
-    return games.map((g) => ({
+    const mapped = games.map((g) => ({
       id: g.id,
       date: g.date,
       time: g.time,
@@ -374,6 +374,8 @@ export function createApp(options = {}) {
       channelHint: (g.broadcasters || []).join(', '),
       channels: matchChannels(g, cat.live).map((c) => pub(c)),
     }));
+    mapped.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    return mapped;
   }
 
   // ---------------------------------------------------------------- API do app
@@ -468,6 +470,9 @@ export function createApp(options = {}) {
       expires_at: expiresAt
     });
     store.touchDevice(mac, ip);
+
+    // Pré-carrega o catálogo em segundo plano para o Início abrir instantaneamente
+    catalogs.get(m3uUrl).catch(() => {});
 
     return {
       ok: true,

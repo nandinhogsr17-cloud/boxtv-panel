@@ -144,7 +144,7 @@ export function pub(it, extra = {}) {
 const TYPE_ARRAY = { live: 'live', movie: 'movies', series: 'series' };
 
 export class Catalog {
-  constructor(entries) {
+  constructor(input, replaceHost = null) {
     this.live = [];
     this.movies = [];
     this.series = [];
@@ -153,69 +153,123 @@ export class Catalog {
     const seriesMap = new Map();
     const seen = new Set();
 
-    for (const e of entries) {
-      if (seen.has(e.url)) continue;
-      seen.add(e.url);
-      const kind = classify(e);
-      const group = (e.group || '').trim() || 'Sem grupo';
-      const logo = e.logo || '';
-      const hash = sha1(e.url).slice(0, 12);
+    if (typeof input === 'string') {
+      const str = input;
+      const len = str.length;
+      let cur = null;
+      let extGrp = '';
+      let start = 0;
+      const ATTR_RE = /([A-Za-z0-9_-]+)="([^"]*)"/g;
 
-      if (kind === 'live') {
-        const it = { id: 'l_' + hash, type: 'live', title: e.name || 'Canal', group, logo, url: e.url, tvgId: e.tvgId };
-        this.live.push(it);
-        this.byId.set(it.id, it);
-      } else if (kind === 'movie') {
-        const c = cleanTitle(e.name);
-        const it = { id: 'v_' + hash, type: 'movie', title: c.title, year: c.year, group, logo, url: e.url };
-        this.movies.push(it);
-        this.byId.set(it.id, it);
-      } else {
-        const ep = parseEpisode(e.name);
-        let sname;
-        let year = null;
-        let season = 1;
-        let epn = null;
-        let rest = '';
-        if (ep) {
-          const c = cleanTitle(ep.series);
-          sname = c.title;
-          year = c.year;
-          season = ep.season;
-          epn = ep.episode;
-          rest = cleanTitle(ep.rest).title;
-          if (!ep.rest) rest = '';
-        } else {
-          sname = cleanTitle(e.name).title;
+      while (start < len) {
+        let end = str.indexOf('\n', start);
+        if (end === -1) end = len;
+        let line = str.slice(start, end).trim();
+        start = end + 1;
+        if (!line) continue;
+
+        if (line.startsWith('#EXTINF')) {
+          const attrs = {};
+          const rest = line.slice(7).replace(ATTR_RE, (_, k, v) => {
+            attrs[k.toLowerCase()] = v;
+            return '';
+          });
+          const comma = rest.indexOf(',');
+          const name = (comma >= 0 ? rest.slice(comma + 1) : '').trim();
+          cur = {
+            name: name || attrs['tvg-name'] || '',
+            logo: (attrs['tvg-logo'] || '').trim(),
+            group: (attrs['group-title'] || '').trim(),
+            tvgId: (attrs['tvg-id'] || '').trim(),
+          };
+        } else if (line.startsWith('#EXTGRP:')) {
+          extGrp = line.slice(8).trim();
+        } else if (line.startsWith('#')) {
+          continue;
+        } else if (cur) {
+          if (/^[a-z][a-z0-9+.-]*:\/\//i.test(line)) {
+            let streamUrl = line;
+            if (replaceHost && streamUrl.includes('//vujuva.online')) {
+              streamUrl = streamUrl.replaceAll('//vujuva.online', '//' + replaceHost);
+            }
+            if (!seen.has(streamUrl)) {
+              seen.add(streamUrl);
+              const e = { ...cur, group: cur.group || extGrp, url: streamUrl };
+              this._addEntry(e, seriesMap);
+            }
+          }
+          cur = null;
+          extGrp = '';
         }
-        const key = norm(sname);
-        let s = seriesMap.get(key);
-        if (!s) {
-          s = { id: 's_' + sha1(key).slice(0, 12), type: 'series', title: sname, year, group, logo, episodes: [] };
-          seriesMap.set(key, s);
-          this.series.push(s);
-          this.byId.set(s.id, s);
-        }
-        if (!s.logo && logo) s.logo = logo;
-        if (!s.year && year) s.year = year;
-        if (epn == null) epn = s.episodes.length + 1;
-        const item = {
-          id: 'e_' + hash,
-          type: 'episode',
-          seriesId: s.id,
-          season,
-          episode: epn,
-          title: rest || `Episódio ${epn}`,
-          group,
-          logo,
-          url: e.url,
-        };
-        s.episodes.push(item);
-        this.byId.set(item.id, item);
+      }
+    } else if (Array.isArray(input)) {
+      for (const e of input) {
+        if (seen.has(e.url)) continue;
+        seen.add(e.url);
+        this._addEntry(e, seriesMap);
       }
     }
+
     for (const s of this.series) {
       s.episodes.sort((a, b) => a.season - b.season || a.episode - b.episode);
+    }
+  }
+
+  _addEntry(e, seriesMap) {
+    const kind = classify(e);
+    const group = (e.group || '').trim() || 'Sem grupo';
+    const logo = e.logo || '';
+    const hash = sha1(e.url).slice(0, 12);
+
+    if (kind === 'live') {
+      const it = { id: 'l_' + hash, type: 'live', title: e.name || 'Canal', group, logo, url: e.url, tvgId: e.tvgId };
+      this.live.push(it);
+      this.byId.set(it.id, it);
+    } else if (kind === 'movie') {
+      const c = cleanTitle(e.name);
+      const it = { id: 'v_' + hash, type: 'movie', title: c.title, year: c.year, group, logo, url: e.url };
+      this.movies.push(it);
+      this.byId.set(it.id, it);
+    } else {
+      const ep = parseEpisode(e.name);
+      let sname;
+      let year = null;
+      let season = 1;
+      let epn = null;
+      let rest = '';
+      if (ep) {
+        const c = cleanTitle(ep.series);
+        sname = c.title;
+        year = c.year;
+        season = ep.season;
+        epn = ep.episode;
+        rest = cleanTitle(ep.rest).title;
+        if (!ep.rest) rest = '';
+      } else {
+        sname = cleanTitle(e.name).title;
+      }
+      const key = norm(sname);
+      let s = seriesMap.get(key);
+      if (!s) {
+        s = { id: 's_' + sha1(key).slice(0, 12), type: 'series', title: sname, year, group, logo, episodes: [] };
+        seriesMap.set(key, s);
+        this.series.push(s);
+        this.byId.set(s.id, s);
+      }
+      if (!s.logo && logo) s.logo = logo;
+      if (!s.year && year) s.year = year;
+      if (epn == null) epn = s.episodes.length + 1;
+      const item = {
+        id: 'e_' + hash,
+        type: 'episode',
+        seriesId: s.id,
+        season,
+        episode: epn,
+        title: rest || `Episódio ${epn}`,
+        url: e.url,
+      };
+      s.episodes.push(item);
+      this.byId.set(item.id, item);
     }
   }
 

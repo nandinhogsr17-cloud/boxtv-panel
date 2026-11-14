@@ -62,6 +62,12 @@ export class CatalogStore {
 
   async _load(url, stale) {
     const file = path.join(this.dir, sha1(url) + '.m3u');
+    let replaceHost = '';
+    try {
+      const u = new URL(url);
+      if (u.hostname) replaceHost = u.hostname;
+    } catch { }
+
     try {
       const res = await this.fetchFn(url, {
         headers: { 'user-agent': this.userAgent },
@@ -69,23 +75,14 @@ export class CatalogStore {
         signal: AbortSignal.timeout(180000),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      let text = await res.text();
+      const text = await res.text();
       if (!text.includes('#EXTINF')) throw new Error('A resposta não parece ser uma playlist M3U');
 
-      // Se a playlist veio de um servidor Xtream mas usa subdomínios CDN quebrados (como vujuva.online),
-      // reescreve o host dos streams para o host da própria playlist que funciona perfeitamente!
       try {
-        const u = new URL(url);
-        if (u.hostname) {
-          text = text.replaceAll('//vujuva.online', '//' + u.hostname);
-        }
+        fs.writeFileSync(file, text);
       } catch { }
 
-      fs.writeFileSync(file, text);
-
-
-
-      const catalog = new Catalog(parseM3U(text));
+      const catalog = new Catalog(text, replaceHost);
       this._put(url, catalog);
       return catalog;
     } catch (err) {
@@ -95,9 +92,11 @@ export class CatalogStore {
         return stale.catalog;
       }
       if (fs.existsSync(file)) {
-        const catalog = new Catalog(parseM3U(fs.readFileSync(file, 'utf8')));
-        this._put(url, catalog, 60000);
-        return catalog;
+        try {
+          const catalog = new Catalog(fs.readFileSync(file, 'utf8'), replaceHost);
+          this._put(url, catalog, 60000);
+          return catalog;
+        } catch { }
       }
       throw new HttpError(502, 'playlist_unavailable', { detail: String(err.message || err) });
     }
