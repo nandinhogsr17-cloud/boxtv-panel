@@ -83,20 +83,6 @@ export class CatalogStore {
 
       fs.writeFileSync(file, text);
 
-      // Enriquece o cache M3U com as pastas e categorias reais do Xtream Codes
-      try {
-        const { processFile } = await import('./enrich_cache.js');
-        const tmpFile = file + '.tmp';
-        await processFile(path.dirname(this.dir), path.basename(file), path.basename(tmpFile));
-        if (fs.existsSync(tmpFile)) {
-          fs.copyFileSync(tmpFile, file);
-          fs.unlinkSync(tmpFile);
-          text = fs.readFileSync(file, 'utf8');
-        }
-      } catch (e) {
-        console.error('Erro ao enriquecer categorias M3U:', e.message);
-      }
-
       const catalog = new Catalog(parseM3U(text));
       this._put(url, catalog);
       return catalog;

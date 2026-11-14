@@ -234,7 +234,10 @@ export function createApp(options = {}) {
     if (failLimiter.blocked(ip)) throw new HttpError(429, 'too_many_attempts');
     const mac = normMac(req.headers['x-mac']);
     const key = normKey(req.headers['x-key']);
-    const d = mac && key ? store.getDevice(mac) : null;
+    let d = mac && key ? store.getDevice(mac) : null;
+    if ((!d || !d.device_key) && mac && key && cfg.autoRegister) {
+      d = store.createDevice({ mac, key });
+    }
     if (!d || !d.device_key || !safeEqual(d.device_key, key)) {
       failLimiter.hit(ip);
       throw new HttpError(401, 'invalid_credentials');
