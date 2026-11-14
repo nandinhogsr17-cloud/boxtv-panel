@@ -140,7 +140,7 @@ export function createApp(options = {}) {
         if (u.hostname.includes('vyrqulano')) {
           url = `http://${u.hostname}/get.php?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}&type=m3u_plus&output=ts`;
         }
-      } catch {}
+      } catch { }
     }
     return url;
   }
@@ -266,7 +266,7 @@ export function createApp(options = {}) {
     const mac = normMac(req.headers['x-mac']);
     const key = normKey(req.headers['x-key']);
     let d = mac && key ? store.getDevice(mac) : null;
-    if ((!d || !d.device_key) && mac && key && cfg.autoRegister) {
+    if (!d && mac && key && cfg.autoRegister) {
       d = store.createDevice({ mac, key });
     }
     if (!d || !d.device_key || !safeEqual(d.device_key, key)) {

@@ -16,9 +16,17 @@ export function parseM3U(text) {
   const out = [];
   let cur = null;
   let extGrp = '';
-  for (const raw of String(text).split(/\r?\n/)) {
-    const line = raw.trim();
+  const str = String(text || '');
+  let start = 0;
+  const len = str.length;
+
+  while (start < len) {
+    let end = str.indexOf('\n', start);
+    if (end === -1) end = len;
+    let line = str.slice(start, end).trim();
+    start = end + 1;
     if (!line) continue;
+
     if (line.startsWith('#EXTINF')) {
       const attrs = {};
       const rest = line.slice(7).replace(ATTR_RE, (_, k, v) => {

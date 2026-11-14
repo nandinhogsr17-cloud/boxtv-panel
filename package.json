@@ -8,7 +8,7 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "start": "node server.js",
+    "start": "node --max-old-space-size=400 server.js",
     "test": "node --disable-warning=ExperimentalWarning test/run-tests.js && node --disable-warning=ExperimentalWarning test/web-tests.js && node --disable-warning=ExperimentalWarning test/activate-tests.js && node --disable-warning=ExperimentalWarning test/integrations-tests.js"
   }
 }

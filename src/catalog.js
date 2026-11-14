@@ -9,7 +9,7 @@ import { sha1, HttpError } from './util.js';
  * - uma única requisição por URL ao mesmo tempo
  */
 export class CatalogStore {
-  constructor({ dir, ttlMs = 6 * 3600 * 1000, userAgent = 'IPTVPanel/1.0', maxEntries = 16, fetchFn = fetch }) {
+  constructor({ dir, ttlMs = 6 * 3600 * 1000, userAgent = 'IPTVPanel/1.0', maxEntries = 2, fetchFn = fetch }) {
     this.dir = dir;
     this.ttlMs = ttlMs;
     this.userAgent = userAgent;
@@ -83,19 +83,7 @@ export class CatalogStore {
 
       fs.writeFileSync(file, text);
 
-      // Enriquece o cache M3U com as pastas e categorias reais do Xtream Codes
-      try {
-        const { processFile } = await import('./enrich_cache.js');
-        const tmpFile = file + '.tmp';
-        await processFile(path.dirname(this.dir), path.basename(file), path.basename(tmpFile));
-        if (fs.existsSync(tmpFile)) {
-          fs.copyFileSync(tmpFile, file);
-          fs.unlinkSync(tmpFile);
-          text = fs.readFileSync(file, 'utf8');
-        }
-      } catch (e) {
-        console.error('Erro ao enriquecer categorias M3U:', e.message);
-      }
+
 
       const catalog = new Catalog(parseM3U(text));
       this._put(url, catalog);
