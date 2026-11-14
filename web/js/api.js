@@ -88,12 +88,13 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
   return data;
 }
 
-export const login = (username, password) =>
+export const login = (username, password, template) =>
   api('/auth/login', {
     method: 'POST',
     body: {
       username,
       password,
+      template,
       mac: identity.mac,
       key: identity.key,
       appVersion: 'web-1.0',

@@ -24,8 +24,26 @@ function loginScreen(onSuccess) {
     placeholder: 'Senha',
     autocomplete: 'current-password',
     'data-f': true,
-    style: 'width:100%;margin-bottom:18px;padding:12px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:#fff;font-size:1rem'
+    style: 'width:100%;margin-bottom:12px;padding:12px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:#fff;font-size:1rem'
   });
+
+  const templateInput = h('input', {
+    type: 'text',
+    placeholder: 'Template / Link M3U (use {user} e {pass})',
+    'data-f': true,
+    style: 'display:none;width:100%;margin-bottom:12px;padding:12px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:#fff;font-size:.85rem'
+  });
+
+  const toggleBtn = h('a', {
+    href: '#',
+    style: 'display:block;margin-bottom:14px;font-size:.85rem;color:var(--accent);text-align:center;text-decoration:none',
+    onclick: (e) => {
+      e.preventDefault();
+      const open = templateInput.style.display !== 'none';
+      templateInput.style.display = open ? 'none' : 'block';
+      toggleBtn.textContent = open ? '⚙️ Editar Servidor / Link M3U' : '▲ Ocultar configurações de lista';
+    }
+  }, '⚙️ Editar Servidor / Link M3U');
 
   const errBox = h('div', { class: 'err', style: 'display:none;margin-bottom:14px;color:var(--accent);font-size:.9rem;text-align:center' });
 
@@ -39,6 +57,7 @@ function loginScreen(onSuccess) {
   async function doLogin() {
     const user = userInput.value.trim();
     const pass = passInput.value.trim();
+    const tpl = templateInput.value.trim() || undefined;
     if (!user || !pass) {
       errBox.textContent = 'Preencha o usuário e a senha.';
       errBox.style.display = 'block';
@@ -49,7 +68,7 @@ function loginScreen(onSuccess) {
     errBox.style.display = 'none';
 
     try {
-      const res = await login(user, pass);
+      const res = await login(user, pass, tpl);
       localStorage.setItem('iptv.logged_user', user);
       onSuccess(res);
     } catch (e) {
@@ -79,6 +98,8 @@ function loginScreen(onSuccess) {
     errBox,
     userInput,
     passInput,
+    toggleBtn,
+    templateInput,
     btnSubmit
   )));
 

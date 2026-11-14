@@ -111,8 +111,39 @@ export function createApp(options = {}) {
     metaSvc.key = tmdb ?? cfg.tmdbKey;
   };
   applyIntegrations();
-  const xtreamHost = () => store.getSetting('xtream_host') ?? cfg.xtreamHost;
-  const xtreamOutput = () => store.getSetting('xtream_output') ?? cfg.xtreamOutput;
+  const getM3uTemplate = () =>
+    store.getSetting('m3u_template') ||
+    process.env.M3U_TEMPLATE ||
+    'http://vyrqulano.online/get.php?username={user}&password={pass}&type=m3u_plus&output=ts';
+
+  const xtreamHost = () => {
+    let h = store.getSetting('xtream_host') || cfg.xtreamHost || 'http://vyrqulano.online';
+    if (h.includes('e.vyrqulano.online')) h = h.replace('e.vyrqulano.online', 'vyrqulano.online');
+    return h.replace(/\/$/, '');
+  };
+  const xtreamOutput = () => store.getSetting('xtream_output') ?? cfg.xtreamOutput ?? 'ts';
+
+  function resolveM3uUrl(user, pass) {
+    let tpl = getM3uTemplate();
+    let url = tpl
+      .replaceAll('{user}', encodeURIComponent(user))
+      .replaceAll('{pass}', encodeURIComponent(pass))
+      .replaceAll('{username}', encodeURIComponent(user))
+      .replaceAll('{password}', encodeURIComponent(pass));
+
+    if (url.includes('e.vyrqulano.online')) {
+      url = url.replace('e.vyrqulano.online', 'vyrqulano.online');
+    }
+    if (url.includes('/p/') && url.endsWith('/m3u')) {
+      try {
+        const u = new URL(url);
+        if (u.hostname.includes('vyrqulano')) {
+          url = `http://${u.hostname}/get.php?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}&type=m3u_plus&output=ts`;
+        }
+      } catch {}
+    }
+    return url;
+  }
   const mask = (v) => (v ? (v.length <= 8 ? '••••' : v.slice(0, 3) + '••••••' + v.slice(-3)) : '');
 
   const generalLimiter = new Limiter(600, 60000);
@@ -208,11 +239,11 @@ export function createApp(options = {}) {
     const keys = [];
     const re = new RegExp(
       '^' +
-        pattern.replace(/:([a-zA-Z]+)/g, (_, k) => {
-          keys.push(k);
-          return '([^/]+)';
-        }) +
-        '/?$'
+      pattern.replace(/:([a-zA-Z]+)/g, (_, k) => {
+        keys.push(k);
+        return '([^/]+)';
+      }) +
+      '/?$'
     );
     routes.push({ method, re, keys, fn, ...opts });
   };
@@ -393,13 +424,21 @@ export function createApp(options = {}) {
       throw new HttpError(400, 'invalid_identity', { message: 'Identificador do aparelho ausente.' });
     }
 
-    // URL oficial baseada no servidor padrão
-    const m3uUrl = `http://yuzantor.online:80/get.php?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}&type=m3u_plus&output=mpegts`;
+    if (body.template) {
+      store.setSetting('m3u_template', String(body.template).trim());
+    }
+    if (body.serverHost) {
+      store.setSetting('xtream_host', String(body.serverHost).trim());
+    }
+
+    // URL oficial baseada no servidor inteligente configurado
+    const m3uUrl = resolveM3uUrl(user, pass);
+    const host = xtreamHost();
 
     // Consulta o vencimento da conta no servidor do provedor
     let expiresAt = null;
     try {
-      const authApiUrl = `http://yuzantor.online:80/player_api.php?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
+      const authApiUrl = `${host}/player_api.php?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
       const res = await fetch(authApiUrl, {
         headers: { 'User-Agent': cfg.streamUa || 'VLC/3.0.20 LibVLC/3.0.20' },
         signal: AbortSignal.timeout(5000)
@@ -411,7 +450,7 @@ export function createApp(options = {}) {
           expiresAt = expSec * 1000;
         }
       }
-    } catch {}
+    } catch { }
 
     // Garante que o dispositivo exista e esteja ativo com a lista
     let d = store.getDevice(mac);
@@ -435,7 +474,28 @@ export function createApp(options = {}) {
       status: 'active',
       username: user,
       expiresAt: expiresAt,
-      m3u_url: m3uUrl
+      m3u_url: m3uUrl,
+      serverHost: host,
+      template: getM3uTemplate()
+    };
+  });
+
+  add('GET', '/api/v1/config/server', () => ({
+    serverHost: xtreamHost(),
+    template: getM3uTemplate(),
+    output: xtreamOutput()
+  }));
+
+  add('POST', '/api/v1/config/server', async (ctx) => {
+    const b = ctx.body || {};
+    if (b.template !== undefined) store.setSetting('m3u_template', String(b.template).trim());
+    if (b.serverHost !== undefined) store.setSetting('xtream_host', String(b.serverHost).trim());
+    if (b.output !== undefined) store.setSetting('xtream_output', String(b.output).trim());
+    return {
+      ok: true,
+      serverHost: xtreamHost(),
+      template: getM3uTemplate(),
+      output: xtreamOutput()
     };
   });
 
