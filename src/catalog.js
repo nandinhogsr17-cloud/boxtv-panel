@@ -1,12 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseM3U, Catalog } from './m3u.js';
+import { credentialsFromUrl } from './playlist.js';
+import { XtreamCatalog } from './xtream.js';
 import { sha1, HttpError } from './util.js';
 
 /**
  * Baixa e interpreta a playlist M3U no servidor (o app recebe JSON pronto).
- * - cache em memória (TTL) + cópia em disco para quando o provedor cair
- * - uma única requisição por URL ao mesmo tempo
+ * - Se for servidor Xtream Codes com usuário/senha, usa a API REAL oficial (player_api.php)
+ * - Cache em memória (TTL) + cópia em disco para quando o provedor cair
+ * - Uma única requisição por URL ao mesmo tempo
  */
 export class CatalogStore {
   constructor({ dir, ttlMs = 6 * 3600 * 1000, userAgent = 'IPTVPanel/1.0', maxEntries = 2, fetchFn = fetch }) {
@@ -21,6 +24,36 @@ export class CatalogStore {
   }
 
   async get(url, { force = false } = {}) {
+    // 1. Se for Xtream Codes, usa a API Real nativa
+    const creds = credentialsFromUrl(url);
+    if (creds) {
+      const cacheKey = `xtream:${creds.origin}:${creds.user}`;
+      const hit = this.mem.get(cacheKey);
+      if (hit && !force && Date.now() - hit.at < this.ttlMs) {
+        this.mem.delete(cacheKey);
+        this.mem.set(cacheKey, hit);
+        return hit.catalog;
+      }
+      if (this.inflight.has(cacheKey)) return this.inflight.get(cacheKey);
+      const p = (async () => {
+        try {
+          const xc = new XtreamCatalog({ origin: creds.origin, user: creds.user, pass: creds.pass });
+          await xc.init();
+          this._put(cacheKey, xc);
+          return xc;
+        } catch (err) {
+          if (hit) {
+            this._put(cacheKey, hit.catalog, 60000);
+            return hit.catalog;
+          }
+          throw err;
+        }
+      })().finally(() => this.inflight.delete(cacheKey));
+      this.inflight.set(cacheKey, p);
+      return p;
+    }
+
+    // 2. Caso contrário, usa M3U tradicional
     const hit = this.mem.get(url);
     if (hit && !force && Date.now() - hit.at < this.ttlMs) {
       this.mem.delete(url);

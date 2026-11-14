@@ -536,6 +536,13 @@ export function createApp(options = {}) {
     if (!rawMac) throw new HttpError(400, 'invalid_code', { message: 'Código de ativação inválido.' });
 
     let d = store.getDevice(rawMac);
+    // Se o aparelho já está ativado com uma lista M3U, impede duplicar ou sobrescrever acidentalmente
+    if (d && d.status === 'active' && d.m3u_url) {
+      throw new HttpError(409, 'already_activated', {
+        message: 'Este aparelho já está ativado! Para reativar ou alterar a lista, exclua-o da lista abaixo primeiro.'
+      });
+    }
+
     if (!d) {
       // Device ainda não registrou: cria SEM device_key (o device vai registrar via /register)
       d = store.createDevice({
@@ -545,7 +552,7 @@ export function createApp(options = {}) {
         status: 'active'
       });
     } else {
-      // Device já existe: atualiza nome, m3u e status — NÃO altera device_key (mantém a do device)
+      // Device já existe (ex: estava pending): ativa
       d = store.updateDevice(rawMac, {
         name: (name || d.name || 'Dispositivo').trim(),
         m3u_url: m3uUrl.trim(),
@@ -671,6 +678,20 @@ export function createApp(options = {}) {
       const { type, group, q } = ctx.query;
       if (!['live', 'movie', 'series'].includes(type)) throw new HttpError(400, 'invalid_type');
       const cat = await ctx.dev.getCatalog();
+
+      // Se for Xtream e tiver grupo selecionado, carrega sob demanda se ainda não carregou
+      if (typeof cat.loadVodCategory === 'function' && group) {
+        if (type === 'movie') {
+          for (const [cid, cname] of cat.vodCatMap.entries()) {
+            if (cname === group) { await cat.loadVodCategory(cid).catch(() => {}); break; }
+          }
+        } else if (type === 'series') {
+          for (const [cid, cname] of cat.seriesCatMap.entries()) {
+            if (cname === group) { await cat.loadSeriesCategory(cid).catch(() => {}); break; }
+          }
+        }
+      }
+
       const offset = Math.max(0, parseInt(ctx.query.offset) || 0);
       // Canais ao vivo podem ter lista grande; filmes/séries ficam no limite de 200 por página
       const maxLimit = type === 'live' ? 3000 : 200;
@@ -704,6 +725,22 @@ export function createApp(options = {}) {
     '/api/v1/series/:id',
     async (ctx) => {
       const cat = await ctx.dev.getCatalog();
+      if (typeof cat.getSeriesDetail === 'function') {
+        const detail = await cat.getSeriesDetail(ctx.params.id);
+        const prog = store.progressMap(ctx.dev.mac);
+        const favIds = store.favoriteIds(ctx.dev.mac);
+        return {
+          ...detail,
+          favorite: favIds.has(detail.id),
+          seasons: (detail.seasons || []).map(s => ({
+            season: s.season,
+            episodes: (s.episodes || []).map(ep => {
+              const p = prog.get(ep.id);
+              return pub(ep, { positionMs: p?.position_ms || 0, durationMs: p?.duration_ms || 0 });
+            })
+          }))
+        };
+      }
       const s = cat.byId.get(ctx.params.id);
       if (!s || s.type !== 'series') throw new HttpError(404, 'not_found');
       const prog = store.progressMap(ctx.dev.mac);

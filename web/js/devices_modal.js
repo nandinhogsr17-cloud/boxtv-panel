@@ -188,7 +188,11 @@ export function openDevicesModal({ onDeviceActivated } = {}) {
         }, 1200);
       }
     } catch (e) {
-      showMsg(e.body?.message || 'Erro ao ativar aparelho. Verifique o código e o link.', 'bad');
+      if (e.status === 409 || e.code === 'already_activated') {
+        showMsg('⚠️ Este aparelho já está ativado! Para reativar ou alterar a lista, exclua-o da lista abaixo primeiro.', 'bad');
+      } else {
+        showMsg(e.body?.message || 'Erro ao ativar aparelho. Verifique o código e o link.', 'bad');
+      }
     } finally {
       btnSubmit.disabled = false;
       btnSubmit.textContent = '🏧 Ativar Aparelho';

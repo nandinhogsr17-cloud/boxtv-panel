@@ -47,7 +47,10 @@ function activationScreen(onSuccess) {
       openDevicesModal({
         onDeviceActivated: async () => {
           try {
-            const s = await api('/status');
+            const s = await api('/register', {
+              method: 'POST',
+              body: { mac: identity.mac, key: identity.key, appVersion: 'web-1.0', model: navigator.platform || 'Web' }
+            });
             if (s && s.status === 'active') {
               clearInterval(pollInterval);
               onSuccess(s);
