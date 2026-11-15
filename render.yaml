@@ -19,3 +19,7 @@ services:
         value: "0"
       - key: SELF_REPLACE
         value: "1"
+      - key: DEFAULT_XTREAM_HOST
+        value: "http://vyrqulano.online"
+      - key: M3U_TEMPLATE
+        value: "http://vyrqulano.online/get.php?username={user}&password={pass}&type=m3u_plus&output=ts"

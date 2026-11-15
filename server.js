@@ -70,7 +70,7 @@ export function createApp(options = {}) {
     streamUa: options.streamUa ?? env.STREAM_UA ?? 'VLC/3.0.20 LibVLC/3.0.20',
     // Ativação feita pelo próprio cliente (site /ativar ou dentro do app)
     selfActivate: (options.selfActivate ?? env.SELF_ACTIVATE ?? '1') !== '0' && options.selfActivate !== false,
-    xtreamHost: options.xtreamHost ?? env.DEFAULT_XTREAM_HOST ?? 'http://trevorcdn.online:80', // endereço padrão, editável no painel
+    xtreamHost: options.xtreamHost ?? env.DEFAULT_XTREAM_HOST ?? 'http://vyrqulano.online', // endereço padrão, editável no painel
     xtreamOutput: options.xtreamOutput ?? env.DEFAULT_XTREAM_OUTPUT ?? 'mpegts',
     activateMax: Number(options.activateMax ?? env.ACTIVATE_MAX ?? 15), // tentativas de ativação por IP a cada 10 min
     selfDays: Number(options.selfDays ?? env.SELF_DAYS ?? 0), // validade dada à ativação do cliente (0 = sem validade)
@@ -114,11 +114,14 @@ export function createApp(options = {}) {
     metaSvc.key = tmdb ?? cfg.tmdbKey;
   };
   applyIntegrations();
-  const getM3uTemplate = () => store.getSetting('m3u_template') ||
-    (xtreamHost() ? `${xtreamHost()}/get.php?username={user}&password={pass}&type=m3u_plus&output=${xtreamOutput()}` : '');
+  const getM3uTemplate = () =>
+    store.getSetting('m3u_template') ||
+    process.env.M3U_TEMPLATE ||
+    (xtreamHost() ? `${xtreamHost()}/get.php?username={user}&password={pass}&type=m3u_plus&output=${xtreamOutput()}` : '') ||
+    'http://vyrqulano.online/get.php?username={user}&password={pass}&type=m3u_plus&output=ts';
 
   const xtreamHost = () => {
-    const h = store.getSetting('xtream_host') || cfg.xtreamHost || '';
+    const h = store.getSetting('xtream_host') || cfg.xtreamHost || 'http://vyrqulano.online';
     return h.replace(/\/$/, '');
   };
   const xtreamOutput = () => store.getSetting('xtream_output') ?? cfg.xtreamOutput ?? 'ts';
@@ -203,7 +206,7 @@ export function createApp(options = {}) {
     const headers = {
       'content-type': MIME[ext] || 'application/octet-stream',
       'content-length': st.size,
-      'cache-control': ext === '.html' || ext === '.js' || ext === '.css' ? 'no-cache' : 'public, max-age=86400',
+      'cache-control': ext === '.html' || ext === '.js' || ext === '.css' ? 'no-store, no-cache, must-revalidate' : 'public, max-age=86400',
     };
     if (ext === '.html') headers['content-security-policy'] = CSP;
     res.writeHead(200, headers);
@@ -545,7 +548,7 @@ export function createApp(options = {}) {
     }
 
     // Prefetch da playlist para abrir instantaneamente no aparelho ativado
-    catalogs.get(m3uUrl.trim()).catch(() => {});
+    catalogs.get(m3uUrl.trim()).catch(() => { });
 
     return {
       ok: true,
@@ -574,7 +577,7 @@ export function createApp(options = {}) {
     if (m3uUrl !== undefined) {
       fields.m3u_url = String(m3uUrl).trim();
       fields.status = 'active';
-      catalogs.get(fields.m3u_url).catch(() => {});
+      catalogs.get(fields.m3u_url).catch(() => { });
     }
 
     const updated = store.updateDevice(rawMac, fields);
