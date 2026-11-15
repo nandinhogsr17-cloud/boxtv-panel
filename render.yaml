@@ -1,16 +1,30 @@
+# Blueprint do Render (fica na raiz do repositório; o painel está na pasta panel/).
 services:
   - type: web
     name: boxtv-panel
     runtime: node
+    rootDir: panel
     plan: free
     region: oregon
     buildCommand: ""
     startCommand: node --max-old-space-size=400 server.js
+    healthCheckPath: /healthz
     envVars:
       - key: NODE_VERSION
         value: 22.13.0
       - key: ADMIN_USER
         value: admin
+      # Defina a senha no painel do Render (Environment). sync:false = não fica no repositório.
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Atrás do proxy do Render: usa o IP real do cliente nos limites de tentativas.
+      - key: TRUST_PROXY
+        value: "1"
+      # Segredos estáveis (gerados uma vez pelo Render): não mudam a cada deploy.
+      - key: WEB_SECRET
+        generateValue: true
+      - key: CREDENTIAL_ENCRYPTION_KEY
+        generateValue: true
       - key: AUTO_REGISTER
         value: "1"
       - key: SELF_ACTIVATE
@@ -20,6 +34,8 @@ services:
       - key: SELF_REPLACE
         value: "1"
       - key: DEFAULT_XTREAM_HOST
-        value: "http://vyrqulano.online"
+        value: "http://trevorcdn.online:80"
       - key: M3U_TEMPLATE
-        value: "http://vyrqulano.online/get.php?username={user}&password={pass}&type=m3u_plus&output=ts"
+        value: "http://trevorcdn.online:80/get.php?username={user}&password={pass}&type=m3u_plus&output=ts"
+      # ATENÇÃO: no plano grátis o disco é efêmero (aparelhos e banco somem a cada reinício).
+      # Em plano pago, adicione:  disk: { name: data, mountPath: /data, sizeGB: 1 }  e  DATA_DIR=/data

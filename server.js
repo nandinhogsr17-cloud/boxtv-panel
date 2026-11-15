@@ -60,7 +60,7 @@ export function createApp(options = {}) {
     tmdbKey: options.tmdbKey ?? env.TMDB_KEY ?? '',
     tz: options.tz ?? env.TZ_NAME ?? 'America/Sao_Paulo',
     ttlMin: Number(options.ttlMin ?? env.CATALOG_TTL_MIN ?? 360),
-    trustProxy: (options.trustProxy ?? env.TRUST_PROXY) === '1' || options.trustProxy === true,
+    trustProxy: (options.trustProxy ?? env.TRUST_PROXY) === '1' || options.trustProxy === true || (options.trustProxy === undefined && env.TRUST_PROXY === undefined && !!env.RENDER), // no Render liga sozinho
     autoRegister: (options.autoRegister ?? env.AUTO_REGISTER ?? '1') !== '0',
     // Site (navegador): proxy de vídeo/imagem
     webDir: options.webDir ?? env.WEB_DIR ?? path.join(__dirname, 'web'),
@@ -70,7 +70,7 @@ export function createApp(options = {}) {
     streamUa: options.streamUa ?? env.STREAM_UA ?? 'VLC/3.0.20 LibVLC/3.0.20',
     // Ativação feita pelo próprio cliente (site /ativar ou dentro do app)
     selfActivate: (options.selfActivate ?? env.SELF_ACTIVATE ?? '1') !== '0' && options.selfActivate !== false,
-    xtreamHost: options.xtreamHost ?? env.DEFAULT_XTREAM_HOST ?? 'http://vyrqulano.online', // endereço padrão, editável no painel
+    xtreamHost: options.xtreamHost ?? env.DEFAULT_XTREAM_HOST ?? 'http://trevorcdn.online:80', // servidor padrão BoxTv, editável pelo login/admin
     xtreamOutput: options.xtreamOutput ?? env.DEFAULT_XTREAM_OUTPUT ?? 'mpegts',
     activateMax: Number(options.activateMax ?? env.ACTIVATE_MAX ?? 15), // tentativas de ativação por IP a cada 10 min
     selfDays: Number(options.selfDays ?? env.SELF_DAYS ?? 0), // validade dada à ativação do cliente (0 = sem validade)
@@ -117,12 +117,12 @@ export function createApp(options = {}) {
   const getM3uTemplate = () =>
     store.getSetting('m3u_template') ||
     process.env.M3U_TEMPLATE ||
-    (xtreamHost() ? `${xtreamHost()}/get.php?username={user}&password={pass}&type=m3u_plus&output=${xtreamOutput()}` : '') ||
-    'http://vyrqulano.online/get.php?username={user}&password={pass}&type=m3u_plus&output=ts';
+    (xtreamHost() ? `${xtreamHost()}/get.php?username={user}&password={pass}&type=m3u_plus&output=${xtreamOutput()}` : '');
 
   const xtreamHost = () => {
-    const h = store.getSetting('xtream_host') || cfg.xtreamHost || 'http://vyrqulano.online';
-    return h.replace(/\/$/, '');
+    const saved = store.getSetting('xtream_host');
+    const h = saved ?? cfg.xtreamHost ?? '';
+    return String(h).trim().replace(/\/$/, '');
   };
   const xtreamOutput = () => store.getSetting('xtream_output') ?? cfg.xtreamOutput ?? 'ts';
 
@@ -134,6 +134,7 @@ export function createApp(options = {}) {
   const refreshLimiter = new Map();
   const proxyLimiter = new Limiter(9000, 60000);
   const activateLimiter = new Limiter(cfg.activateMax, 10 * 60000);
+  const loginIpLimiter = new Limiter(20, 10 * 60000); // logins errados por IP (o MAC é escolhido pelo cliente, então só ele não basta)
   const authFailLimiter = new Limiter(10, 60 * 60000); // senhas erradas por aparelho (evita adivinhar logins pelo painel)
   let activating = 0; // verificações de lista em andamento (limita o custo de downloads simultâneos)
   const webTokens = new WebTokens(cfg.webSecret);
@@ -421,8 +422,12 @@ export function createApp(options = {}) {
       throw new HttpError(400, 'invalid_identity', { message: 'Identificador do aparelho ausente.' });
     }
 
-    const host = xtreamHost();
-    if (!host) throw new HttpError(422, 'no_default_server', { message: 'Configure o servidor Xtream no painel antes de aceitar logins.' });
+    const requestedHost = String(body.serverHost || '').trim();
+    const normalizedHost = requestedHost ? cleanPlaylistUrl(requestedHost) : xtreamHost();
+    if (requestedHost && !normalizedHost) throw new HttpError(400, 'invalid_server_host', { message: 'Endereço do servidor Xtream inválido.' });
+    const host = normalizedHost ? new URL(normalizedHost).origin : '';
+    if (!host) throw new HttpError(422, 'no_default_server', { message: 'Configure o servidor Xtream.' });
+    if (loginIpLimiter.blocked(ip)) throw new HttpError(429, 'too_many_attempts', { message: 'Muitas tentativas. Aguarde alguns minutos.' });
     if (authFailLimiter.blocked(mac)) throw new HttpError(429, 'too_many_attempts', { message: 'Muitas senhas erradas neste aparelho. Aguarde uma hora.' });
     const existing = store.getDevice(mac);
     if (existing && existing.device_key && !safeEqual(existing.device_key, key)) {
@@ -438,7 +443,7 @@ export function createApp(options = {}) {
       account = await xtreamAccount(host, user, pass, { allowPrivate: cfg.allowPrivate, userAgent: cfg.streamUa });
       if (!account) throw new HttpError(502, 'provider_unavailable', { message: 'O servidor Xtream não respondeu com uma conta válida.' });
     } catch (e) {
-      if (e instanceof PlaylistError && e.reason === 'auth_failed') authFailLimiter.hit(mac);
+      if (e instanceof PlaylistError && e.reason === 'auth_failed') { authFailLimiter.hit(mac); loginIpLimiter.hit(ip); }
       if (e instanceof PlaylistError) throw new HttpError(422, e.reason, { message: REASON_TEXT[e.reason] || 'A conta Xtream não foi aceita.', ...e.extra });
       throw e;
     }
@@ -473,133 +478,8 @@ export function createApp(options = {}) {
     };
   });
 
-  add('GET', '/api/v1/config/server', () => ({
-    serverHost: xtreamHost(),
-    template: getM3uTemplate(),
-    output: xtreamOutput()
-  }));
-
-  add('POST', '/api/v1/config/server', async (ctx) => {
-    const b = ctx.body || {};
-    if (b.template !== undefined) store.setSetting('m3u_template', String(b.template).trim());
-    if (b.serverHost !== undefined) store.setSetting('xtream_host', String(b.serverHost).trim());
-    if (b.output !== undefined) store.setSetting('xtream_output', String(b.output).trim());
-    return {
-      ok: true,
-      serverHost: xtreamHost(),
-      template: getM3uTemplate(),
-      output: xtreamOutput()
-    };
-  });
-
-  // ================================================================ 🏧 Ativação e Gerenciamento de Dispositivos
-  add('GET', '/api/v1/devices', async () => {
-    const list = store.listDevices();
-    const formatted = list.map(d => ({
-      code: macToCode(d.mac),
-      mac: d.mac,
-      key: d.device_key,
-      name: d.name || 'Sem nome',
-      m3u_url: d.m3u_url,
-      status: deviceStatus(d),
-      last_seen: d.last_seen,
-      created_at: d.created_at,
-      expires_at: d.expires_at
-    }));
-    return {
-      total: formatted.length,
-      active: formatted.filter(d => d.status === 'active').length,
-      pending: formatted.filter(d => d.status !== 'active').length,
-      devices: formatted
-    };
-  });
-
-  add('POST', '/api/v1/devices/activate', async (ctx) => {
-    const { code, name, m3uUrl } = ctx.body || {};
-    if (!code) throw new HttpError(400, 'missing_code', { message: 'Informe o código do aparelho.' });
-    if (!m3uUrl) throw new HttpError(400, 'missing_m3u', { message: 'Informe o link da lista M3U.' });
-
-    const rawMac = normMac(code) || normCode(code);
-    if (!rawMac) throw new HttpError(400, 'invalid_code', { message: 'Código de ativação inválido.' });
-
-    let d = store.getDevice(rawMac);
-    // Se o aparelho já está ativado com uma lista M3U, impede duplicar ou sobrescrever acidentalmente
-    if (d && d.status === 'active' && d.m3u_url) {
-      throw new HttpError(409, 'already_activated', {
-        message: 'Este aparelho já está ativado! Para reativar ou alterar a lista, exclua-o da lista abaixo primeiro.'
-      });
-    }
-
-    if (!d) {
-      // Device ainda não registrou: cria SEM device_key (o device vai registrar via /register)
-      d = store.createDevice({
-        mac: rawMac,
-        name: (name || 'Dispositivo').trim(),
-        m3uUrl: m3uUrl.trim(),
-        status: 'active'
-      });
-    } else {
-      // Device já existe (ex: estava pending): ativa
-      d = store.updateDevice(rawMac, {
-        name: (name || d.name || 'Dispositivo').trim(),
-        m3u_url: m3uUrl.trim(),
-        status: 'active'
-      });
-    }
-
-    // Prefetch da playlist para abrir instantaneamente no aparelho ativado
-    catalogs.get(m3uUrl.trim()).catch(() => { });
-
-    return {
-      ok: true,
-      message: 'Aparelho ativado com sucesso!',
-      device: {
-        code: macToCode(d.mac),
-        mac: d.mac,
-        name: d.name,
-        m3u_url: d.m3u_url,
-        status: deviceStatus(d)
-      }
-    };
-  });
-
-  add('PUT', '/api/v1/devices/:code', async (ctx) => {
-    const { code } = ctx.params;
-    const { name, m3uUrl } = ctx.body || {};
-    const rawMac = normMac(code) || normCode(code);
-    if (!rawMac) throw new HttpError(400, 'invalid_code');
-
-    const d = store.getDevice(rawMac);
-    if (!d) throw new HttpError(404, 'device_not_found', { message: 'Aparelho não encontrado.' });
-
-    const fields = {};
-    if (name !== undefined) fields.name = String(name).trim();
-    if (m3uUrl !== undefined) {
-      fields.m3u_url = String(m3uUrl).trim();
-      fields.status = 'active';
-      catalogs.get(fields.m3u_url).catch(() => { });
-    }
-
-    const updated = store.updateDevice(rawMac, fields);
-    return {
-      ok: true,
-      device: {
-        code: macToCode(updated.mac),
-        mac: updated.mac,
-        name: updated.name,
-        m3u_url: updated.m3u_url,
-        status: deviceStatus(updated)
-      }
-    };
-  });
-
-  add('DELETE', '/api/v1/devices/:code', async (ctx) => {
-    const { code } = ctx.params;
-    const rawMac = normMac(code) || normCode(code);
-    if (!rawMac) throw new HttpError(400, 'invalid_code');
-    const ok = store.deleteDevice(rawMac);
-    return { ok };
-  });
+  // Rotas antigas /api/v1/devices* e /api/v1/config/server foram removidas: eram públicas (sem login)
+  // e expunham chaves/senhas Xtream. Use /admin/api/devices e /admin/api/integrations (protegidas).
 
   add(
     'GET',
@@ -956,7 +836,7 @@ export function createApp(options = {}) {
     new HttpError(status, 'playlist_invalid', { reason, message: REASON_TEXT[reason] || 'Lista inválida.', ...extra });
 
   // O front-end pergunta: tem servidor fixo (então o cliente só digita usuário e senha)?
-  add('GET', '/api/v1/activate/config', () => ({ loginMode: xtreamHost() ? 'userpass' : 'link', selfActivate: cfg.selfActivate }));
+  add('GET', '/api/v1/activate/config', () => ({ loginMode: xtreamHost() ? 'userpass' : 'link', selfActivate: cfg.selfActivate, serverHost: xtreamHost() }));
 
   add('POST', '/api/v1/activate', async (ctx) => {
     const { body, ip, req } = ctx;

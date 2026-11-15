@@ -88,13 +88,13 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
   return data;
 }
 
-export const login = (username, password, template) =>
+export const login = (username, password, serverHost) =>
   api('/auth/login', {
     method: 'POST',
     body: {
       username,
       password,
-      template,
+      serverHost,
       mac: identity.mac,
       key: identity.key,
       appVersion: 'web-1.0',
@@ -104,6 +104,7 @@ export const login = (username, password, template) =>
 
 export const logout = () => {
   localStorage.removeItem('iptv.logged_user');
+  identity.clear();
   location.reload();
 };
 

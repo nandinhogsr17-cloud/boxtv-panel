@@ -46,11 +46,11 @@ async function testSuite() {
   });
 
   // 2. Configuração do Servidor Inteligente
-  await check('2. Configuração do Servidor (/api/v1/config/server)', async () => {
-    const res = await fetch(`${BASE}/api/v1/config/server`);
+  await check('2. Configuração pública (/api/v1/activate/config)', async () => {
+    const res = await fetch(`${BASE}/api/v1/activate/config`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const j = await res.json();
-    return `Host: ${j.serverHost} | Template: ${j.template}`;
+    return `Host: ${j.serverHost}`;
   });
 
   // 3. Login Xtream real: credenciais apenas pelo ambiente local de teste.

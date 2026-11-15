@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Fundo Squircle BoxTv Gradiente Noturno -->
+    <path
+        android:pathData="M18,10 L90,10 A8,8 0 0 1 98,18 L98,90 A8,8 0 0 1 90,98 L18,98 A8,8 0 0 1 10,90 L10,18 A8,8 0 0 1 18,10 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108"
+                android:type="linear">
+                <item android:offset="0" android:color="#FF1A162B" />
+                <item android:offset="1" android:color="#FF0B0914" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Contorno Borda Neon BoxTv -->
+    <path
+        android:pathData="M22,14 L86,14 A6,6 0 0 1 92,20 L92,88 A6,6 0 0 1 86,94 L22,94 A6,6 0 0 1 16,88 L16,20 A6,6 0 0 1 22,14 Z"
+        android:strokeWidth="1.5">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="16"
+                android:startY="14"
+                android:endX="92"
+                android:endY="94"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFFF0055" />
+                <item android:offset="0.5" android:color="#FFFF3366" />
+                <item android:offset="1" android:color="#FF7928CA" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Tela TV BoxTv -->
+    <path
+        android:pathData="M25,32 L83,32 A5,5 0 0 1 88,37 L88,75 A5,5 0 0 1 83,80 L25,80 A5,5 0 0 1 20,75 L20,37 A5,5 0 0 1 25,32 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="20"
+                android:startY="32"
+                android:endX="88"
+                android:endY="80"
+                android:type="linear">
+                <item android:offset="0" android:color="#FF241E3A" />
+                <item android:offset="1" android:color="#FF141124" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Antenas Wireless -->
+    <path
+        android:pathData="M44,24 Q54,18 64,24"
+        android:strokeColor="#FFFF2B6D"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round" />
+    <!-- Botão Play BoxTv -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M48,46 L48,66 L66,56 Z" />
+    <!-- LED BoxTv -->
+    <path
+        android:fillColor="#FF00FFCC"
+        android:pathData="M54,87 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+</vector>

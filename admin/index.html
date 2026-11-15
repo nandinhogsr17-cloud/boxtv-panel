@@ -364,10 +364,10 @@ async function loadInteg() {
   $('i-ts').textContent = i.tmdb.configured ? `· configurado (${i.tmdb.key}, ${i.tmdb.source})` : '· não configurado';
   $('i-fcomp').value = i.football.competitions;
   $('x-s').textContent = i.xtream.host ? `· ${i.xtream.source}` : '· não configurado (o cliente precisa colar o link da lista)';
-  xtreamDefaultHost = i.xtream.defaultHost || 'http://trevorcdn.online:80';
+  xtreamDefaultHost = i.xtream.defaultHost || '';
   $('x-host').value = i.xtream.host || xtreamDefaultHost; $('x-out').value = i.xtream.output;
 }
-let xtreamDefaultHost = 'http://trevorcdn.online:80';
+let xtreamDefaultHost = '';
 const showMsg = (id, r) => { const el = $(id); el.textContent = (r.ok ? '✓ ' : '✗ ') + r.message; el.style.color = r.ok ? 'var(--ok, #6ee7a8)' : 'var(--bad, #ff7a7a)'; };
 async function integSave(body, msgId) {
   try { await api('PUT', '/admin/api/integrations', body); await loadInteg(); toast('Salvo'); }

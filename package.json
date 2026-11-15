@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node --max-old-space-size=400 server.js",
-    "test": "node --disable-warning=ExperimentalWarning test/run-tests.js && node --disable-warning=ExperimentalWarning test/web-tests.js && node --disable-warning=ExperimentalWarning test/activate-tests.js && node --disable-warning=ExperimentalWarning test/integrations-tests.js"
+    "test": "node --disable-warning=ExperimentalWarning test/run-tests.js && node --disable-warning=ExperimentalWarning test/web-tests.js && node --disable-warning=ExperimentalWarning test/activate-tests.js && node --disable-warning=ExperimentalWarning test/integrations-tests.js && node --disable-warning=ExperimentalWarning test/security-tests.js",
+    "test:github": "node scripts/test-github-connection.js"
   }
 }

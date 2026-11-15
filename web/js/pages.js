@@ -1,5 +1,5 @@
 // Telas do app. Cada função recebe o contêiner e o contexto { open, play, go }.
-import { api, ApiError, imgUrl, identity, setToken } from './api.js';
+import { api, ApiError, imgUrl, identity, setToken, logout } from './api.js';
 import { h, spinner, message, card, artImage, toast } from './dom.js';
 import { focusFirst } from './nav.js';
 
@@ -858,8 +858,7 @@ export async function accountPage(root, ctx, info) {
       h('button', {
         class: 'btn primary', 'data-f': true, onclick: () => {
           if (confirm('Deseja sair e trocar de usuário?')) {
-            localStorage.removeItem('iptv.logged_user');
-            location.reload();
+            logout();
           }
         }
       }, 'Sair da conta'))));

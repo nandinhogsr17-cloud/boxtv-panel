@@ -64,7 +64,7 @@ export class CatalogStore {
       if (this.inflight.has(cacheKey)) return this.inflight.get(cacheKey);
       const p = (async () => {
         try {
-          const xc = new XtreamCatalog({ origin: creds.origin, user: creds.user, pass: creds.pass });
+          const xc = new XtreamCatalog({ origin: creds.origin, user: creds.user, pass: creds.pass, fetchFn: this.fetchFn });
           await xc.init();
           this._put(cacheKey, xc);
           return xc;

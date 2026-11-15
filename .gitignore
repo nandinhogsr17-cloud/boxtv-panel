@@ -6,3 +6,26 @@ data/*.m3u*
 
 data/.credential-key
 data/devices.json
+
+# Arquivos locais e segredos
+.env.*
+!.env.example
+data/cache/
+*.log
+
+# Android Studio / Gradle (fontes Android são versionadas; caches e builds não)
+android/.gradle/
+android/.kotlin/
+android/.idea/
+android/local.properties
+android/build/
+android/app/build/
+android/.android/
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# IDE e artefatos locais
+.idea/
+.vscode/

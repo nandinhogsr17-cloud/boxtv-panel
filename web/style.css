@@ -1681,3 +1681,13 @@ details input {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
 }
+
+
+/* Login Xtream — tela inicial do cliente */
+.login-input {
+  width: 100%; min-width: 0; padding: 13px 14px; border-radius: 12px;
+  border: 1px solid rgba(168,178,204,.24); background: rgba(255,255,255,.055);
+  color: var(--txt); outline: none; box-sizing: border-box;
+}
+.login-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(179,77,255,.14); }
+.login-input::placeholder { color: var(--dim2); }
