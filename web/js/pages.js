@@ -149,10 +149,10 @@ function gameCard(g, ctx, showDate = false) {
     ),
     g.channels && g.channels.length
       ? h('div', { class: 'chs' }, g.channels.slice(0, 6).map((c, i) =>
-          h('button', { class: 'btn sm primary', 'data-f': true, title: c.title, onclick: () => ctx.play({ items: g.channels, index: i }) },
-            '⚽ ' + (c.title.length > 22 ? c.title.slice(0, 21) + '…' : c.title)
-          )
-        ))
+        h('button', { class: 'btn sm primary', 'data-f': true, title: c.title, onclick: () => ctx.play({ items: g.channels, index: i }) },
+          '⚽ ' + (c.title.length > 22 ? c.title.slice(0, 21) + '…' : c.title)
+        )
+      ))
       : h('div', { class: 'hint' }, g.channelHint ? `Passa em: ${g.channelHint} (canal não encontrado na sua lista)` : 'Canal não informado')
   );
 }
@@ -306,12 +306,12 @@ export async function livePage(root, ctx) {
         if (Hls && Hls.isSupported()) {
           pvHls = new Hls({ liveSyncDurationCount: 3, maxBufferLength: 20, manifestLoadingMaxRetry: 2, levelLoadingMaxRetry: 2 });
           pvHls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) { if (pvRetries++ < 3) setTimeout(() => pvLoad(item), 2000); else pvSetState('error', 'Stream interrompido.'); } });
-          pvHls.on(Hls.Events.MANIFEST_PARSED, () => pvVideo.play().catch(() => {}));
+          pvHls.on(Hls.Events.MANIFEST_PARSED, () => pvVideo.play().catch(() => { }));
           pvHls.loadSource(absUrl);
           pvHls.attachMedia(pvVideo);
         } else {
           pvVideo.src = absUrl;
-          pvVideo.play().catch(() => {});
+          pvVideo.play().catch(() => { });
         }
       } else if (kind === 'ts') {
         const mpegts = await loadScript(['vendor/mpegts.js'], 'mpegts');
@@ -327,13 +327,13 @@ export async function livePage(root, ctx) {
           pvMp.attachMediaElement(pvVideo);
           pvMp.load();
           try { pvMp.play(); } catch { }
-          pvVideo.play().catch(() => {});
+          pvVideo.play().catch(() => { });
         } else {
           pvSetState('error', 'Navegador não suporta este formato.');
         }
       } else {
         pvVideo.src = absUrl;
-        pvVideo.play().catch(() => {});
+        pvVideo.play().catch(() => { });
       }
     } catch { pvSetState('error', 'Falha ao iniciar o player.'); }
   }
@@ -784,7 +784,7 @@ export async function detailPage(root, ctx, base) {
   const src = h('div', { class: 'src', style: 'margin-top:8px;font-size:.8rem;color:var(--dim)' });
   const tags = h('div', { class: 'tags' },
     [full.type === 'series' ? 'Série' : 'Filme', full.year, full.group,
-     full.type === 'series' ? `${full.episodeCount} episódios` : null]
+    full.type === 'series' ? `${full.episodeCount} episódios` : null]
       .filter(Boolean).map((t) => h('span', {}, t))
   );
   const favBtn = h('button', {

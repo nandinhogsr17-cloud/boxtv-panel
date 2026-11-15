@@ -92,7 +92,7 @@ function loginScreen(onSuccess) {
 
   const card = h('div', { class: 'login-card' },
     h('div', { class: 'login-logo-wrap' },
-      h('img', { src: 'boxtv-logo.svg', alt: 'BoxTv', class: 'login-logo', onerror: (e) => { e.currentTarget.style.display='none'; } }),
+      h('img', { src: 'boxtv-logo.svg', alt: 'BoxTv', class: 'login-logo', style: 'width:68px;height:68px;max-width:68px;max-height:68px;object-fit:contain;margin:0 auto;display:block', onerror: (e) => { e.currentTarget.style.display='none'; } }),
     ),
     h('h1', { class: 'login-title' }, 'BoxTv ⚡'),
     h('p', { class: 'login-subtitle' }, 'O MELHOR DO ENTRETENIMENTO · CANAIS AO VIVO · FILMES · SÉRIES · JOGOS'),
