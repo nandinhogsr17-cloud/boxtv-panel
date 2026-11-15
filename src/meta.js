@@ -68,6 +68,29 @@ export class MetaService {
       .trim();
   }
 
+  _simplifyTitle(title) {
+    // Remove ano entre parênteses ou no fim, remove números do fim
+    return title
+      .replace(/\s*\(\d{4}\)\s*$/, '')
+      .replace(/\s+\d{4}$/, '')
+      .replace(/\s+\d+$/, '')
+      .trim();
+  }
+
+  async _search(type, title, year, key) {
+    let url =
+      `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}` +
+      `&language=${this.lang}&include_adult=false&api_key=${key}`;
+    if (year) {
+      url += type === 'movie' ? `&year=${year}` : `&first_air_date_year=${year}`;
+    }
+    const res = await this.fetchFn(url, { signal: AbortSignal.timeout(6000) });
+    if (res.status === 401) throw Object.assign(new Error('HTTP 401'), { status: 401 });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    return data.results || [];
+  }
+
   async lookup(item) {
     if (!item) return null;
     const type = item.type === 'series' ? 'tv' : 'movie';
@@ -90,29 +113,40 @@ export class MetaService {
     }
 
     try {
-      let url =
-        `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(cleanTitle)}` +
-        `&language=${this.lang}&include_adult=false&api_key=${this.key}`;
-      if (item.year) {
-        url += type === 'movie' ? `&year=${item.year}` : `&first_air_date_year=${item.year}`;
+      let activeKey = this.key;
+      let results = [];
+
+      // Tentativa 1: título limpo + ano + chave ativa
+      try {
+        results = await this._search(type, cleanTitle, item.year, activeKey);
+      } catch (e) {
+        if (e.status === 401) {
+          // Chave inválida: fazer fallback para DEFAULT_TMDB_KEY
+          activeKey = DEFAULT_TMDB_KEY;
+          results = await this._search(type, cleanTitle, item.year, activeKey);
+        } else {
+          throw e;
+        }
       }
 
-      const res = await this.fetchFn(url, { signal: AbortSignal.timeout(6000) });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      let r = (data.results || [])[0];
-
-      // Se não achou com o ano exato, tenta sem o filtro de ano
-      if (!r && item.year) {
+      // Tentativa 2: sem filtro de ano
+      if (!results.length && item.year) {
         try {
-          const fallbackUrl = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(cleanTitle)}&language=${this.lang}&include_adult=false&api_key=${this.key}`;
-          const fRes = await this.fetchFn(fallbackUrl, { signal: AbortSignal.timeout(4000) });
-          if (fRes.ok) {
-            const fData = await fRes.json();
-            r = (fData.results || [])[0];
-          }
+          results = await this._search(type, cleanTitle, null, activeKey);
         } catch {}
       }
+
+      // Tentativa 3: título simplificado (remove números/ano do fim)
+      if (!results.length) {
+        const simplified = this._simplifyTitle(cleanTitle);
+        if (simplified && simplified !== cleanTitle) {
+          try {
+            results = await this._search(type, simplified, null, activeKey);
+          } catch {}
+        }
+      }
+
+      const r = results[0] || null;
 
       const genres = (r?.genre_ids || [])
         .map((id) => TMDB_GENRES[id])
@@ -122,7 +156,7 @@ export class MetaService {
 
       const value = r
         ? {
-            overview: r.overview || 'Sinopse não disponível para este título.',
+            overview: r.overview && r.overview.trim() ? r.overview : 'Sem sinopse disponível neste idioma.',
             poster: r.poster_path ? `https://image.tmdb.org/t/p/w500${r.poster_path}` : null,
             backdrop: r.backdrop_path ? `https://image.tmdb.org/t/p/w1280${r.backdrop_path}` : null,
             rating: r.vote_average ? Math.round(r.vote_average * 10) / 10 : null,

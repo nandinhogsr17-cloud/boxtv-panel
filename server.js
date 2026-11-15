@@ -152,12 +152,23 @@ export function createApp(options = {}) {
 
   // ---------------------------------------------------------------- CORS e arquivos do site
   function corsHeaders(req) {
-    if (!corsList.length) return {};
+    // Sempre permitir CORS para todos os clientes (apps, browsers, players)
+    if (!corsList.length) {
+      return {
+        'access-control-allow-origin': '*',
+        'access-control-expose-headers': 'Content-Length, Content-Range, Accept-Ranges',
+      };
+    }
     const origin = req.headers.origin;
     let allow = null;
     if (corsList.includes('*')) allow = '*';
     else if (origin && corsList.includes(origin)) allow = origin;
-    if (!allow) return {};
+    if (!allow) {
+      return {
+        'access-control-allow-origin': '*',
+        'access-control-expose-headers': 'Content-Length, Content-Range, Accept-Ranges',
+      };
+    }
     return {
       'access-control-allow-origin': allow,
       vary: 'Origin',
@@ -950,25 +961,9 @@ export function createApp(options = {}) {
       const it = cat.byId.get(String(ctx.query.id || ''));
       if (!it || !it.url) throw new HttpError(404, 'not_found');
       let kind = kindFromUrl(it.url);
-      if (kind === 'unknown' || kind === 'mkv') {
-        try {
-          const { res } = await safeGet(it.url, {
-            headers: { 'user-agent': cfg.streamUa },
-            allowPrivate: cfg.allowPrivate,
-            timeoutMs: 10000,
-          });
-          if (res.statusCode >= 400) {
-            res.destroy();
-            throw new HttpError(502, 'upstream_status', { upstreamStatus: res.statusCode });
-          }
-          const sniffed = sniffKind(await readHead(res));
-          if (sniffed !== 'unknown') kind = sniffed;
-        } catch (e) {
-          if (e instanceof HttpError) throw e;
-          throw new HttpError(502, e instanceof UpstreamError ? e.code : 'unreachable');
-        }
+      if (kind === 'unknown') {
+        kind = it.type === 'live' ? 'ts' : 'mp4';
       }
-      if (kind === 'unknown') kind = it.type === 'live' ? 'ts' : 'mp4';
       const token = webTokens.sign(ctx.dev.mac);
       return { kind, src: proxyUrl(token, it.url, kind === 'hls'), live: it.type === 'live', token };
     },

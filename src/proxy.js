@@ -173,11 +173,10 @@ export function kindFromUrl(urlStr) {
   } catch {
     return 'unknown';
   }
-  if (p.endsWith('.m3u8') || p.endsWith('.m3u')) return 'hls';
-  if (p.endsWith('.ts')) return 'ts';
-  if (p.endsWith('.mp4') || p.endsWith('.m4v') || p.endsWith('.mov')) return 'mp4';
+  if (p.endsWith('.m3u8') || p.endsWith('.m3u') || p.includes('.m3u8')) return 'hls';
+  if (p.endsWith('.ts') || p.includes('/live/') || p.includes('/ts/')) return 'ts';
+  if (p.endsWith('.mp4') || p.endsWith('.m4v') || p.endsWith('.mov') || p.endsWith('.webm') || p.includes('/movie/') || p.includes('/series/')) return 'mp4';
   if (p.endsWith('.mkv')) return 'mkv';
-  if (p.endsWith('.webm')) return 'mp4';
   return 'unknown';
 }
 
