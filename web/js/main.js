@@ -1,9 +1,9 @@
-import { api, ApiError, identity, getDeviceCode, login, logout, ensureToken } from './api.js';
-import { h, clear, spinner, message, toast } from './dom.js';
-import { initNav, focusFirst } from './nav.js';
-import { openPlayer, playerOpen } from './player.js';
-import { homePage, browsePage, favsPage, gamesPage, searchPage, detailPage, accountPage } from './pages.js';
-import { openDevicesModal } from './devices_modal.js';
+import { api, ApiError, identity, getDeviceCode, login, logout, ensureToken } from './api.js?v=20261115b';
+import { h, clear, spinner, message, toast } from './dom.js?v=20261115b';
+import { initNav, focusFirst } from './nav.js?v=20261115b';
+import { openPlayer, playerOpen } from './player.js?v=20261115b';
+import { homePage, browsePage, favsPage, gamesPage, searchPage, detailPage, accountPage } from './pages.js?v=20261115b';
+import { openDevicesModal } from './devices_modal.js?v=20261115b';
 
 const CFG = window.IPTV_CONFIG || {};
 const NAME = CFG.appName || 'BoxTv';
