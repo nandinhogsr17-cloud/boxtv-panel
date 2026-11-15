@@ -3,3 +3,6 @@ data/*.db*
 data/*.m3u*
 .env
 .DS_Store
+
+data/.credential-key
+data/devices.json

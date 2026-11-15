@@ -40,7 +40,7 @@ export class EpgService {
 
   /**
    * Extrai o host, credenciais e streamId da URL do canal
-   * Ex: http://yuzantor.online:80/live/Nando5247/dede12346/edc9bfda-2cb1-425a-a032-1ef8214a19fb.ts
+   * Ex: http://server.example/live/USER/PASSWORD/123.ts
    */
   parseStreamUrl(url) {
     try {

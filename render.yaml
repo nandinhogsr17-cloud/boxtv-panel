@@ -11,8 +11,6 @@ services:
         value: 22.13.0
       - key: ADMIN_USER
         value: admin
-      - key: ADMIN_PASSWORD
-        value: admin123
       - key: AUTO_REGISTER
         value: "1"
       - key: SELF_ACTIVATE
@@ -21,9 +19,3 @@ services:
         value: "0"
       - key: SELF_REPLACE
         value: "1"
-      - key: WEB_SECRET
-        value: meu-segredo-local-2024
-      - key: DEFAULT_XTREAM_HOST
-        value: http://vyrqulano.online
-      - key: M3U_TEMPLATE
-        value: "http://vyrqulano.online/get.php?username={user}&password={pass}&type=m3u_plus&output=ts"

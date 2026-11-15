@@ -845,8 +845,7 @@ export async function accountPage(root, ctx, info) {
     h('h1', {}, 'Minha conta'),
     h('dl', { class: 'kv' },
       h('dt', {}, 'Usuário'), h('dd', { class: 'mono' }, loggedUser),
-      h('dt', {}, 'Status'), h('dd', {}, stat),
-      h('dt', {}, 'Servidor'), h('dd', { class: 'mono' }, 'yuzantor.online')),
+      h('dt', {}, 'Status'), h('dd', {}, stat)),
     h('div', { class: 'btns', style: 'margin-top:20px' },
       h('button', {
         class: 'btn', 'data-f': true, onclick: async (e) => {

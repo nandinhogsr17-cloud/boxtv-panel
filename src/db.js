@@ -1,4 +1,5 @@
-import { DatabaseSync } from 'node:sqlite';
+﻿import { DatabaseSync } from 'node:sqlite';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -38,6 +39,7 @@ export class Store {
     fs.mkdirSync(dataDir, { recursive: true });
     this.dataDir = dataDir;
     this.devicesJsonPath = path.join(dataDir, 'devices.json');
+    this.credentialKey = this._loadCredentialKey();
     this.db = new DatabaseSync(path.join(dataDir, 'panel.db'));
     this.db.exec(`
       PRAGMA journal_mode = WAL;
@@ -97,6 +99,7 @@ export class Store {
         updated_at INTEGER NOT NULL
       );
     `);
+    this._encryptLegacyCredentials();
     const p = (sql) => this.db.prepare(sql);
     this.s = {
       settingGet: p('SELECT value FROM settings WHERE key = ?'),
@@ -146,11 +149,61 @@ export class Store {
     this._restoreDevicesFromJson();
   }
 
+  _loadCredentialKey() {
+    const configuredKey = process.env.CREDENTIAL_ENCRYPTION_KEY;
+    if (configuredKey) {
+      const key = Buffer.from(configuredKey.trim(), 'base64url');
+      if (key.length !== 32) throw new Error('CREDENTIAL_ENCRYPTION_KEY must be a 32-byte base64url value.');
+      return key;
+    }
+    const keyPath = path.join(this.dataDir, '.credential-key');
+    const readKey = () => {
+      const key = Buffer.from(fs.readFileSync(keyPath, 'utf8').trim(), 'base64url');
+      if (key.length !== 32) throw new Error('Invalid credential encryption key.');
+      return key;
+    };
+    try { return readKey(); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    const key = crypto.randomBytes(32);
+    try {
+      fs.writeFileSync(keyPath, key.toString('base64url'), { flag: 'wx', mode: 0o600 });
+      return key;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      return readKey();
+    }
+  }
+
+  _encryptCredentialUrl(value) {
+    if (!value) return '';
+    const plain = String(value);
+    if (plain.startsWith('enc:v1:')) return plain;
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', this.credentialKey, iv);
+    const encrypted = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
+    return ['enc', 'v1', iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), encrypted.toString('base64url')].join(':');
+  }
+
+  _decryptCredentialUrl(value) {
+    if (!value || !String(value).startsWith('enc:v1:')) return value || '';
+    const parts = String(value).split(':');
+    if (parts.length !== 5) throw new Error('Invalid encrypted credential URL.');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', this.credentialKey, Buffer.from(parts[2], 'base64url'));
+    decipher.setAuthTag(Buffer.from(parts[3], 'base64url'));
+    return Buffer.concat([decipher.update(Buffer.from(parts[4], 'base64url')), decipher.final()]).toString('utf8');
+  }
+
+  _encryptLegacyCredentials() {
+    const rows = this.db.prepare("SELECT mac, m3u_url FROM devices WHERE m3u_url != '' AND m3u_url NOT LIKE 'enc:v1:%'").all();
+    const update = this.db.prepare('UPDATE devices SET m3u_url = ? WHERE mac = ?');
+    for (const row of rows) update.run(this._encryptCredentialUrl(row.m3u_url), row.mac);
+  }
+
   _restoreDevicesFromJson() {
     try {
       if (!fs.existsSync(this.devicesJsonPath)) return;
       const count = this.db.prepare('SELECT COUNT(*) as c FROM devices').get().c;
-      if (count > 0) return;
+      if (count > 0) { this._persistDevicesToJson(); return; }
       const list = JSON.parse(fs.readFileSync(this.devicesJsonPath, 'utf8'));
       if (Array.isArray(list)) {
         for (const d of list) {
@@ -159,13 +212,14 @@ export class Store {
               INSERT OR REPLACE INTO devices (mac, device_key, name, notes, m3u_url, status, expires_at, created_at, last_seen, last_ip, app_version, model)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
-              d.mac, nz(d.device_key), d.name || '', d.notes || '', d.m3u_url || '',
+              d.mac, nz(d.device_key), d.name || '', d.notes || '', this._encryptCredentialUrl(d.m3u_url || ''),
               d.status || 'active', nz(d.expires_at), d.created_at || Date.now(),
               nz(d.last_seen), nz(d.last_ip), nz(d.app_version), nz(d.model)
             );
           }
         }
       }
+      this._persistDevicesToJson();
     } catch (e) {
       console.error('Erro ao restaurar devices.json:', e);
     }
@@ -174,7 +228,8 @@ export class Store {
   _persistDevicesToJson() {
     try {
       const rows = this.db.prepare('SELECT * FROM devices ORDER BY COALESCE(last_seen, created_at) DESC').all();
-      fs.writeFileSync(this.devicesJsonPath, JSON.stringify(rows, null, 2));
+      const backup = rows.map(row => ({ ...row, m3u_url: '' }));
+      fs.writeFileSync(this.devicesJsonPath, JSON.stringify(backup, null, 2));
     } catch (e) {
       console.error('Erro ao salvar devices.json:', e);
     }
@@ -182,12 +237,13 @@ export class Store {
 
   // ---- dispositivos ----
   getDevice(mac) {
-    return this.s.getDevice.get(mac) ?? null;
+    const row = this.s.getDevice.get(mac);
+    return row ? { ...row, m3u_url: this._decryptCredentialUrl(row.m3u_url) } : null;
   }
 
   createDevice({ mac, key = null, name = '', notes = '', m3uUrl = '', m3u_url, status = 'active', expiresAt = null }) {
     const url = m3u_url !== undefined ? m3u_url : m3uUrl;
-    this.s.insertDevice.run(mac, nz(key), name, notes, url || '', status, nz(expiresAt), Date.now());
+    this.s.insertDevice.run(mac, nz(key), name, notes, this._encryptCredentialUrl(url || ''), status, nz(expiresAt), Date.now());
     const dev = this.getDevice(mac);
     this._persistDevicesToJson();
     return dev;
@@ -200,7 +256,7 @@ export class Store {
     for (const k of allowed) {
       if (k in fields) {
         sets.push(`${k} = ?`);
-        vals.push(nz(fields[k]));
+        vals.push(k === 'm3u_url' ? this._encryptCredentialUrl(fields[k]) : nz(fields[k]));
       }
     }
     if (!sets.length) return this.getDevice(mac);
@@ -223,7 +279,8 @@ export class Store {
   }
 
   listDevices(search = '') {
-    const rows = this.db.prepare('SELECT * FROM devices ORDER BY COALESCE(last_seen, created_at) DESC').all();
+    const rows = this.db.prepare('SELECT * FROM devices ORDER BY COALESCE(last_seen, created_at) DESC').all()
+      .map(row => ({ ...row, m3u_url: this._decryptCredentialUrl(row.m3u_url) }));
     const q = String(search || '').trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((d) =>

@@ -105,24 +105,15 @@ export class GamesService {
     this.competitions = competitions;
     this.fetchFn = fetchFn;
     this.cache = new Map();
+    this.resultCache = new Map();
   }
 
   today() {
     return localDate(this.tz);
   }
 
-  /**
-   * Puxa jogos por data específica (YYYY-MM-DD) ou 'all' (semana completa: ontem, hoje, amanhã e próximos dias)
-   */
-  async forDate(dateParam = this.today()) {
-    if (dateParam === 'all') {
-      return this.allWeekly();
-    }
-
-    const date = dateParam || this.today();
-
-    // 1. Jogos manuais cadastrados no painel admin
-    const manual = this.store.listManualGames(date).map((g) => ({
+  manualForDate(date = this.today()) {
+    return this.store.listManualGames(date).map((g) => ({
       id: 'm' + g.id,
       date: g.date,
       time: g.time,
@@ -139,6 +130,25 @@ export class GamesService {
       broadcasters: splitBroadcasters(g.channels),
       source: 'painel',
     }));
+  }
+
+  peekDate(date = this.today()) {
+    const hit = this.resultCache.get(date);
+    return hit && Date.now() - hit.at < 30000 ? hit.games : null;
+  }
+
+  /**
+   * Puxa jogos por data específica (YYYY-MM-DD) ou 'all' (semana completa: ontem, hoje, amanhã e próximos dias)
+   */
+  async forDate(dateParam = this.today()) {
+    if (dateParam === 'all') {
+      return this.allWeekly();
+    }
+
+    const date = dateParam || this.today();
+
+    // 1. Jogos manuais cadastrados no painel admin
+    const manual = this.manualForDate(date);
 
     // 2. Coletar jogos da ESPN API (gratuita, sem chave, com 22 ligas)
     let espnGames = [];
@@ -185,6 +195,7 @@ export class GamesService {
       return a.time.localeCompare(b.time) || a.home.localeCompare(b.home);
     });
 
+    this.resultCache.set(date, { at: Date.now(), games: combined });
     return combined;
   }
 

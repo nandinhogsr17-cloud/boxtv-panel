@@ -25,32 +25,51 @@ export class XtreamCatalog {
     this.vodCatMap = new Map();
     this.seriesCatMap = new Map();
 
+    this.warnings = [];
     this._loaded = false;
     this._liveLoaded = false;
     this._vodCache = new Map(); // cat_id -> items
     this._seriesCache = new Map(); // cat_id -> items
     this._seriesInfoCache = new Map(); // series_id -> series detail
   }
-
   async _api(action, params = '') {
-    const url = `${this.base}&action=${action}${params}`;
-    const res = await this.fetchFn(url, {
-      headers: { 'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20', 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(20000)
-    });
-    if (!res.ok) throw new Error(`Xtream API ${action} falhou com status ${res.status}`);
-    return res.json();
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const url = this.base + '&action=' + action + params;
+        const res = await this.fetchFn(url, { headers: { 'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20', 'Accept': 'application/json' }, signal: AbortSignal.timeout(10000) });
+        if ((res.status === 429 || res.status >= 500) && attempt < 1) { await new Promise(resolve => setTimeout(resolve, 300)); continue; }
+        if (!res.ok) throw new Error('Xtream API ' + action + ' falhou com status ' + res.status);
+        const data = await res.json();
+        if (data && !Array.isArray(data) && typeof data === 'object') {
+          const auth = data.user_info?.auth;
+          if (data.error || data.status === 'error' || auth === 0 || auth === '0' || auth === false) throw new Error('Xtream API ' + action + ' recusou a sessao ou retornou erro.');
+        }
+        if (/^get_(live|vod|series)_categories$|^get_live_streams$|^get_vod_streams$|^get_series$/.test(action) && !Array.isArray(data)) throw new Error('Xtream API ' + action + ' retornou dados em formato invalido.');
+        return data;
+      } catch (error) {
+        lastError = error;
+        const retryable = error instanceof TypeError || error.name === 'TimeoutError' || error.name === 'AbortError';
+        if (!retryable || attempt >= 1) throw error;
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+    throw lastError || new Error('Xtream API ' + action + ' indisponivel.');
   }
 
   async init() {
     if (this._loaded) return this;
 
     // Carrega categorias e primeiras streams em paralelo
-    const [liveCats, vodCats, seriesCats] = await Promise.all([
-      this._api('get_live_categories').catch(() => []),
-      this._api('get_vod_categories').catch(() => []),
-      this._api('get_series_categories').catch(() => [])
+    const categoryResults = await Promise.allSettled([
+      this._api('get_live_categories'), this._api('get_vod_categories'), this._api('get_series_categories')
     ]);
+    if (categoryResults.every(result => result.status === 'rejected')) {
+      const causes = categoryResults.map(result => result.reason?.message || 'Falha desconhecida').join('; ');
+      throw new Error('A API Xtream nao carregou nenhuma categoria: ' + causes);
+    }
+    this.warnings = categoryResults.map((result, index) => result.status === 'rejected' ? 'Xtream ' + ['canais', 'filmes', 'series'][index] + ': ' + (result.reason?.message || 'falha ao carregar') : null).filter(Boolean);
+    const [liveCats, vodCats, seriesCats] = categoryResults.map(result => result.status === 'fulfilled' ? result.value : []);
 
     for (const c of (liveCats || [])) this.liveCatMap.set(String(c.category_id), c.category_name);
     for (const c of (vodCats || [])) this.vodCatMap.set(String(c.category_id), c.category_name);
@@ -66,7 +85,7 @@ export class XtreamCatalog {
           for (const s of streams) {
             const grp = this.liveCatMap.get(String(s.category_id)) || 'Canais';
             const id = 'l_' + s.stream_id;
-            const url = `${this.origin}/live/${this.user}/${this.pass}/${s.stream_id}.ts`;
+            const url = `${this.origin}/live/${encodeURIComponent(this.user)}/${encodeURIComponent(this.pass)}/${s.stream_id}.ts`;
             const it = {
               id,
               type: 'live',
@@ -81,19 +100,19 @@ export class XtreamCatalog {
           }
         }
         this._liveLoaded = true;
-      }).catch(() => {})
+      }).catch(error => { this.warnings.push('Canais ao vivo: ' + error.message); })
     );
 
     // Pré-carrega primeiras categorias de filmes para a Home
     const topVodCats = (vodCats || []).slice(0, 4);
     for (const vc of topVodCats) {
-      initTasks.push(this.loadVodCategory(String(vc.category_id)).catch(() => {}));
+      initTasks.push(this.loadVodCategory(String(vc.category_id)).catch(error => { this.warnings.push('Filmes: ' + error.message); }));
     }
 
     // Pré-carrega primeiras categorias de séries para a Home
     const topSeriesCats = (seriesCats || []).slice(0, 4);
     for (const sc of topSeriesCats) {
-      initTasks.push(this.loadSeriesCategory(String(sc.category_id)).catch(() => {}));
+      initTasks.push(this.loadSeriesCategory(String(sc.category_id)).catch(error => { this.warnings.push('Series: ' + error.message); }));
     }
 
     await Promise.all(initTasks);
@@ -111,7 +130,7 @@ export class XtreamCatalog {
       for (const s of streams) {
         const id = 'v_' + s.stream_id;
         const ext = s.container_extension || 'mp4';
-        const url = `${this.origin}/movie/${this.user}/${this.pass}/${s.stream_id}.${ext}`;
+        const url = `${this.origin}/movie/${encodeURIComponent(this.user)}/${encodeURIComponent(this.pass)}/${s.stream_id}.${ext}`;
         const c = cleanTitle(s.name);
         const it = {
           id,
@@ -181,7 +200,7 @@ export class XtreamCatalog {
         for (const ep of epList) {
           const epId = 'e_' + ep.id;
           const ext = ep.container_extension || 'mp4';
-          const url = `${this.origin}/series/${this.user}/${this.pass}/${ep.id}.${ext}`;
+          const url = `${this.origin}/series/${encodeURIComponent(this.user)}/${encodeURIComponent(this.pass)}/${ep.id}.${ext}`;
           const item = {
             id: epId,
             type: 'episode',

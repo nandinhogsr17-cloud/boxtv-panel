@@ -54,7 +54,7 @@ export function createApp(options = {}) {
     port: Number(options.port ?? env.PORT ?? 8080),
     dataDir: options.dataDir ?? env.DATA_DIR ?? path.join(__dirname, 'data'),
     adminUser: options.adminUser ?? env.ADMIN_USER ?? 'admin',
-    adminPassword: options.adminPassword ?? env.ADMIN_PASSWORD ?? 'admin123',
+    adminPassword: options.adminPassword ?? env.ADMIN_PASSWORD ?? '',
     footballToken: options.footballToken ?? env.FOOTBALL_DATA_TOKEN ?? '',
     competitions: options.competitions ?? env.FOOTBALL_COMPETITIONS ?? '',
     tmdbKey: options.tmdbKey ?? env.TMDB_KEY ?? '',
@@ -70,7 +70,7 @@ export function createApp(options = {}) {
     streamUa: options.streamUa ?? env.STREAM_UA ?? 'VLC/3.0.20 LibVLC/3.0.20',
     // Ativação feita pelo próprio cliente (site /ativar ou dentro do app)
     selfActivate: (options.selfActivate ?? env.SELF_ACTIVATE ?? '1') !== '0' && options.selfActivate !== false,
-    xtreamHost: options.xtreamHost ?? env.DEFAULT_XTREAM_HOST ?? 'http://yuzantor.online:80', // servidor fixo: o cliente só digita usuário e senha
+    xtreamHost: options.xtreamHost ?? env.DEFAULT_XTREAM_HOST ?? 'http://trevorcdn.online:80', // endereço padrão, editável no painel
     xtreamOutput: options.xtreamOutput ?? env.DEFAULT_XTREAM_OUTPUT ?? 'mpegts',
     activateMax: Number(options.activateMax ?? env.ACTIVATE_MAX ?? 15), // tentativas de ativação por IP a cada 10 min
     selfDays: Number(options.selfDays ?? env.SELF_DAYS ?? 0), // validade dada à ativação do cliente (0 = sem validade)
@@ -80,13 +80,15 @@ export function createApp(options = {}) {
 
   let generatedPassword = false;
   if (!cfg.adminPassword) {
-    cfg.adminPassword = 'admin123';
+    cfg.adminPassword = crypto.randomBytes(24).toString('base64url');
+    generatedPassword = true;
   }
 
   const store = new Store(cfg.dataDir);
   const catalogs = new CatalogStore({
     dir: path.join(cfg.dataDir, 'cache'),
     ttlMs: cfg.ttlMin * 60000,
+    encryptionKey: store.credentialKey,
     // Listas ativadas por clientes são endereços digitados por qualquer pessoa: só internet pública.
     fetchFn: options.fetchFn ?? guardedFetch({ allowPrivate: cfg.allowPrivate }),
   });
@@ -108,42 +110,19 @@ export function createApp(options = {}) {
     gamesSvc.token = tok ?? cfg.footballToken;
     gamesSvc.competitions = comp ?? cfg.competitions;
     gamesSvc.cache.clear();
+    gamesSvc.resultCache.clear();
     metaSvc.key = tmdb ?? cfg.tmdbKey;
   };
   applyIntegrations();
-  const getM3uTemplate = () =>
-    store.getSetting('m3u_template') ||
-    process.env.M3U_TEMPLATE ||
-    'http://vyrqulano.online/get.php?username={user}&password={pass}&type=m3u_plus&output=ts';
+  const getM3uTemplate = () => store.getSetting('m3u_template') ||
+    (xtreamHost() ? `${xtreamHost()}/get.php?username={user}&password={pass}&type=m3u_plus&output=${xtreamOutput()}` : '');
 
   const xtreamHost = () => {
-    let h = store.getSetting('xtream_host') || cfg.xtreamHost || 'http://vyrqulano.online';
-    if (h.includes('e.vyrqulano.online')) h = h.replace('e.vyrqulano.online', 'vyrqulano.online');
+    const h = store.getSetting('xtream_host') || cfg.xtreamHost || '';
     return h.replace(/\/$/, '');
   };
   const xtreamOutput = () => store.getSetting('xtream_output') ?? cfg.xtreamOutput ?? 'ts';
 
-  function resolveM3uUrl(user, pass) {
-    let tpl = getM3uTemplate();
-    let url = tpl
-      .replaceAll('{user}', encodeURIComponent(user))
-      .replaceAll('{pass}', encodeURIComponent(pass))
-      .replaceAll('{username}', encodeURIComponent(user))
-      .replaceAll('{password}', encodeURIComponent(pass));
-
-    if (url.includes('e.vyrqulano.online')) {
-      url = url.replace('e.vyrqulano.online', 'vyrqulano.online');
-    }
-    if (url.includes('/p/') && url.endsWith('/m3u')) {
-      try {
-        const u = new URL(url);
-        if (u.hostname.includes('vyrqulano')) {
-          url = `http://${u.hostname}/get.php?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}&type=m3u_plus&output=ts`;
-        }
-      } catch { }
-    }
-    return url;
-  }
   const mask = (v) => (v ? (v.length <= 8 ? '••••' : v.slice(0, 3) + '••••••' + v.slice(-3)) : '');
 
   const generalLimiter = new Limiter(600, 60000);
@@ -279,7 +258,7 @@ export function createApp(options = {}) {
       throw new HttpError(403, 'device_not_active', { status, expiresAt: d.expires_at });
     }
     if (Date.now() - (d.last_seen || 0) > 60000) store.touchDevice(mac, ip);
-    return { mac, device: d, status, getCatalog: () => catalogs.get(d.m3u_url) };
+    return { mac, device: d, status, getCatalog: (options) => catalogs.get(d.m3u_url, options) };
   }
 
   function adminAuth(ctx) {
@@ -356,9 +335,7 @@ export function createApp(options = {}) {
     );
   }
 
-  async function gamesFor(cat, reqDate = null) {
-    const isAll = reqDate === 'all';
-    const games = isAll ? await gamesSvc.allWeekly() : await gamesSvc.forDate(reqDate || gamesSvc.today());
+  function mapGamesFor(cat, games) {
     const mapped = games.map((g) => ({
       id: g.id,
       date: g.date,
@@ -377,6 +354,20 @@ export function createApp(options = {}) {
     }));
     mapped.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     return mapped;
+  }
+
+  function gamesPreviewFor(cat) {
+    const date = gamesSvc.today();
+    const cached = gamesSvc.peekDate(date) || [];
+    const manual = gamesSvc.manualForDate(date);
+    const external = cached.filter((game) => !String(game.id).startsWith('m'));
+    return mapGamesFor(cat, [...manual, ...external]).slice(0, 10);
+  }
+
+  async function gamesFor(cat, reqDate = null) {
+    const isAll = reqDate === 'all';
+    const games = isAll ? await gamesSvc.allWeekly() : await gamesSvc.forDate(reqDate || gamesSvc.today());
+    return mapGamesFor(cat, games);
   }
 
   // ---------------------------------------------------------------- API do app
@@ -416,7 +407,7 @@ export function createApp(options = {}) {
   add('POST', '/api/v1/auth/login', async (ctx) => {
     const { body, ip } = ctx;
     const user = String(body.username || '').trim();
-    const pass = String(body.password || '').trim();
+    const pass = String(body.password ?? '');
     const mac = normMac(body.mac) || normMac(ctx.req.headers['x-mac']);
     const key = normKey(body.key) || normKey(ctx.req.headers['x-key']);
 
@@ -427,36 +418,29 @@ export function createApp(options = {}) {
       throw new HttpError(400, 'invalid_identity', { message: 'Identificador do aparelho ausente.' });
     }
 
-    if (body.template) {
-      store.setSetting('m3u_template', String(body.template).trim());
-    }
-    if (body.serverHost) {
-      store.setSetting('xtream_host', String(body.serverHost).trim());
-    }
-
-    // URL oficial baseada no servidor inteligente configurado
-    const m3uUrl = resolveM3uUrl(user, pass);
     const host = xtreamHost();
+    if (!host) throw new HttpError(422, 'no_default_server', { message: 'Configure o servidor Xtream no painel antes de aceitar logins.' });
+    if (authFailLimiter.blocked(mac)) throw new HttpError(429, 'too_many_attempts', { message: 'Muitas senhas erradas neste aparelho. Aguarde uma hora.' });
+    const existing = store.getDevice(mac);
+    if (existing && existing.device_key && !safeEqual(existing.device_key, key)) {
+      throw new HttpError(403, 'key_mismatch', { message: 'A chave não confere com este aparelho.' });
+    }
+    if (existing?.status === 'blocked') throw new HttpError(403, 'device_blocked', { message: 'Este aparelho está bloqueado.' });
+    if (!existing && !cfg.autoRegister) throw new HttpError(403, 'device_not_registered', { message: 'Este aparelho ainda não foi cadastrado.' });
 
-    // Consulta o vencimento da conta no servidor do provedor
-    let expiresAt = null;
+    const m3uUrl = buildXtreamUrl({ host, user, pass, output: xtreamOutput() });
+    if (!m3uUrl) throw new HttpError(422, 'invalid_login', { message: 'Confira os dados da conta Xtream.' });
+    let account;
     try {
-      const authApiUrl = `${host}/player_api.php?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
-      const res = await fetch(authApiUrl, {
-        headers: { 'User-Agent': cfg.streamUa || 'VLC/3.0.20 LibVLC/3.0.20' },
-        signal: AbortSignal.timeout(5000)
-      });
-      if (res.ok) {
-        const info = await res.json();
-        const expSec = Number(info.user_info?.exp_date);
-        if (expSec && Number.isFinite(expSec)) {
-          expiresAt = expSec * 1000;
-        }
-      }
-    } catch { }
-
+      account = await xtreamAccount(host, user, pass, { allowPrivate: cfg.allowPrivate, userAgent: cfg.streamUa });
+      if (!account) throw new HttpError(502, 'provider_unavailable', { message: 'O servidor Xtream não respondeu com uma conta válida.' });
+    } catch (e) {
+      if (e instanceof PlaylistError && e.reason === 'auth_failed') authFailLimiter.hit(mac);
+      if (e instanceof PlaylistError) throw new HttpError(422, e.reason, { message: REASON_TEXT[e.reason] || 'A conta Xtream não foi aceita.', ...e.extra });
+      throw e;
+    }
     // Garante que o dispositivo exista e esteja ativo com a lista
-    let d = store.getDevice(mac);
+    let d = existing;
     if (!d) {
       d = store.createDevice({ mac, key });
     } else if (!d.device_key) {
@@ -468,7 +452,7 @@ export function createApp(options = {}) {
       m3u_url: m3uUrl,
       status: 'active',
       name: user,
-      expires_at: expiresAt
+      expires_at: account.expiresAt
     });
     store.touchDevice(mac, ip);
 
@@ -479,7 +463,7 @@ export function createApp(options = {}) {
       ok: true,
       status: 'active',
       username: user,
-      expiresAt: expiresAt,
+      expiresAt: account.expiresAt,
       m3u_url: m3uUrl,
       serverHost: host,
       template: getM3uTemplate()
@@ -660,13 +644,8 @@ export function createApp(options = {}) {
         const pool = [...cat.movies.slice(0, 200), ...cat.series.slice(0, 200)].filter((i) => i.logo);
         if (pool.length) hero = withFav([pool[Math.floor(Date.now() / DAY_MS) % pool.length]], favIds)[0];
       }
-      let games = [];
-      try {
-        games = (await gamesFor(cat)).slice(0, 10);
-      } catch {
-        games = [];
-      }
-      return { hero, rows, games };
+      // Usa uma prévia local/cacheada; consultas externas seguem em /games sem atrasar a lista IPTV.
+      return { hero, rows, games: gamesPreviewFor(cat) };
     },
     { device: true }
   );
@@ -677,17 +656,17 @@ export function createApp(options = {}) {
     async (ctx) => {
       const { type, group, q } = ctx.query;
       if (!['live', 'movie', 'series'].includes(type)) throw new HttpError(400, 'invalid_type');
-      const cat = await ctx.dev.getCatalog();
+      const cat = await ctx.dev.getCatalog({ force: ctx.query.force === '1' });
 
       // Se for Xtream e tiver grupo selecionado, carrega sob demanda se ainda não carregou
       if (typeof cat.loadVodCategory === 'function' && group) {
         if (type === 'movie') {
           for (const [cid, cname] of cat.vodCatMap.entries()) {
-            if (cname === group) { await cat.loadVodCategory(cid).catch(() => {}); break; }
+            if (cname === group) { await cat.loadVodCategory(cid); break; }
           }
         } else if (type === 'series') {
           for (const [cid, cname] of cat.seriesCatMap.entries()) {
-            if (cname === group) { await cat.loadSeriesCategory(cid).catch(() => {}); break; }
+            if (cname === group) { await cat.loadSeriesCategory(cid); break; }
           }
         }
       }
@@ -700,6 +679,7 @@ export function createApp(options = {}) {
       const { total, items } = cat.list(type, { group: group || null, q: q || '', offset, limit });
       const out = { total, items: withFav(items, favIds) };
       if (offset === 0 && !q) out.groups = cat.groups(type);
+      if (cat.warnings?.length) out.warning = 'Parte do catalogo Xtream nao carregou. Confira a conexao e tente atualizar.';
       return out;
     },
     { device: true }
@@ -895,7 +875,7 @@ export function createApp(options = {}) {
       competitions: gamesSvc.competitions || '',
       source: store.getSetting('football_token') != null ? 'painel' : gamesSvc.token ? 'ambiente' : null,
     },
-    xtream: { host: xtreamHost() || '', output: xtreamOutput(), source: store.getSetting('xtream_host') != null ? 'painel' : xtreamHost() ? 'ambiente' : null },
+    xtream: { host: xtreamHost() || '', defaultHost: cfg.xtreamHost, output: xtreamOutput(), source: store.getSetting('xtream_host') != null ? 'painel' : xtreamHost() ? 'ambiente' : null },
     tmdb: {
       configured: !!metaSvc.key,
       key: mask(metaSvc.key),

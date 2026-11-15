@@ -83,11 +83,11 @@
   <div class="empty" id="empty" style="display:none">Nenhum dispositivo neste filtro. Quando alguém abrir o app, o MAC aparece aqui como "Aguardando".</div>
 
   <h2>Servidor da lista (login só com usuário e senha)</h2>
-  <p class="mut small">Coloque o servidor do seu provedor Xtream. Depois disso o cliente só digita <b>usuário e senha</b> (no app ou em /ativar) e o painel monta o link <code>…/get.php?username=…&amp;password=…&amp;type=m3u_plus&amp;output=…</code>, confere a conta no servidor e testa a lista antes de ativar.</p>
+  <p class="mut small">Servidor padrão já salvo. Edite o endereço base aqui quando mudar de provedor. O cliente só digita <b>usuário e senha</b>; o painel valida a conta na API Xtream <code>player_api.php</code> e monta a lista. Não cole <code>/player_api.php</code> ou <code>/get.php</code> no campo. Se o provedor oferecer HTTPS, prefira HTTPS para proteger as credenciais durante a conexão.</p>
   <div class="bar" style="flex-wrap:wrap;align-items:flex-end;gap:10px">
-    <div style="flex:1;min-width:260px"><div class="mut small">Servidor <span id="x-s" class="mut"></span></div><input id="x-host" placeholder="http://servidor.com:80" autocomplete="off"></div>
+    <div style="flex:1;min-width:260px"><div class="mut small">URL base Xtream <span id="x-s" class="mut"></span></div><input id="x-host" type="url" placeholder="http://trevorcdn.online:80" autocomplete="url" spellcheck="false"></div>
     <div style="width:170px"><div class="mut small">Formato</div><select id="x-out"><option value="mpegts">mpegts</option><option value="ts">ts</option><option value="m3u8">m3u8 (HLS)</option></select></div>
-    <button id="x-save" class="primary">Salvar</button><button id="x-clear" class="danger">Apagar</button>
+    <button id="x-save" class="primary">Salvar servidor</button><button id="x-clear">Restaurar padrão</button>
   </div>
   <div id="x-msg" class="small" style="margin:4px 0 14px"></div>
 
@@ -364,8 +364,10 @@ async function loadInteg() {
   $('i-ts').textContent = i.tmdb.configured ? `· configurado (${i.tmdb.key}, ${i.tmdb.source})` : '· não configurado';
   $('i-fcomp').value = i.football.competitions;
   $('x-s').textContent = i.xtream.host ? `· ${i.xtream.source}` : '· não configurado (o cliente precisa colar o link da lista)';
-  $('x-host').value = i.xtream.host; $('x-out').value = i.xtream.output;
+  xtreamDefaultHost = i.xtream.defaultHost || 'http://trevorcdn.online:80';
+  $('x-host').value = i.xtream.host || xtreamDefaultHost; $('x-out').value = i.xtream.output;
 }
+let xtreamDefaultHost = 'http://trevorcdn.online:80';
 const showMsg = (id, r) => { const el = $(id); el.textContent = (r.ok ? '✓ ' : '✗ ') + r.message; el.style.color = r.ok ? 'var(--ok, #6ee7a8)' : 'var(--bad, #ff7a7a)'; };
 async function integSave(body, msgId) {
   try { await api('PUT', '/admin/api/integrations', body); await loadInteg(); toast('Salvo'); }
@@ -383,7 +385,7 @@ $('i-tsave').onclick = async () => { if ($('i-tkey').value.trim()) { await integ
 $('i-ttest').onclick = () => integTest('tmdb', 'i-tmsg');
 $('i-tclear').onclick = () => { if (confirm('Apagar a chave do TMDB?')) integSave({ tmdbKey: '' }, 'i-tmsg'); };
 $('x-save').onclick = async () => { await integSave({ xtreamHost: $('x-host').value, xtreamOutput: $('x-out').value }, 'x-msg'); };
-$('x-clear').onclick = () => { if (confirm('Apagar o servidor? O cliente volta a precisar do link da lista.')) integSave({ xtreamHost: '' }, 'x-msg'); };
+$('x-clear').onclick = () => { $('x-host').value = xtreamDefaultHost; integSave({ xtreamHost: xtreamDefaultHost }, 'x-msg'); };
 loadInteg().catch(() => {});
 
 load().catch((e) => toast('Erro: ' + e.message)); loadGames();

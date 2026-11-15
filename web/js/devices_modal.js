@@ -5,8 +5,6 @@ import { setScope } from './nav.js';
 
 let currentModal = null;
 
-const DEFAULT_M3U = 'http://vyrqulano.online/get.php?username=Nando5247&password=dede12346&type=m3u_plus&output=ts';
-
 async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
@@ -42,12 +40,11 @@ export function openDevicesModal({ onDeviceActivated } = {}) {
   });
 
   const inpM3u = h('textarea', {
-    placeholder: DEFAULT_M3U,
+    placeholder: 'Cole o link M3U fornecido pelo provedor',
     rows: 2,
     'data-f': true,
     style: 'width:100%;padding:11px 13px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:#fff;font-size:.9rem;resize:vertical;word-break:break-all'
   });
-  inpM3u.value = DEFAULT_M3U;
 
   const msgBox = h('div', { style: 'display:none;padding:10px 14px;border-radius:8px;font-size:.9rem;font-weight:600' });
 
@@ -135,7 +132,7 @@ export function openDevicesModal({ onDeviceActivated } = {}) {
   function startEdit(d) {
     const newName = prompt('Editar Nome do Aparelho:', d.name || 'Dispositivo');
     if (newName === null) return;
-    const newM3u = prompt('Editar Link da Lista M3U:', d.m3u_url || DEFAULT_M3U);
+    const newM3u = prompt('Editar Link da Lista M3U:', d.m3u_url || '');
     if (newM3u === null) return;
 
     editDevice(d.code || d.mac, newName, newM3u).then(() => {
@@ -265,8 +262,8 @@ export function openDevicesModal({ onDeviceActivated } = {}) {
             h('a', {
               href: '#',
               style: 'color:var(--accent);text-decoration:none;font-size:.8rem',
-              onclick: (e) => { e.preventDefault(); inpM3u.value = DEFAULT_M3U; }
-            }, 'Usar lista padrão')
+              onclick: (e) => { e.preventDefault(); inpM3u.value = ''; }
+            }, 'Limpar campo')
           ),
           inpM3u
         ),

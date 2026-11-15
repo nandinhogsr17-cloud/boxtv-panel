@@ -40,8 +40,8 @@ export const XTREAM_OUTPUTS = ['mpegts', 'ts', 'm3u8'];
 export function buildXtreamUrl({ host, user, pass, output = 'ts' } = {}) {
   const h = String(host ?? '').trim().replace(/\s+/g, '');
   const u = String(user ?? '').trim();
-  const p = String(pass ?? '').trim();
-  if (!h || !u || !p || u.length > 200 || p.length > 200) return null;
+  const p = String(pass ?? '');
+  if (!h || !u || !p.trim() || u.length > 200 || p.length > 200) return null;
   const out = XTREAM_OUTPUTS.includes(output) ? output : 'ts';
   const base = cleanPlaylistUrl(h);
   if (!base) return null;
@@ -63,14 +63,14 @@ export const outputCandidates = (preferred) => [...new Set([XTREAM_OUTPUTS.inclu
  */
 export function parseLoginInput(userRaw, passRaw) {
   const u = String(userRaw ?? '').trim();
-  const p = String(passRaw ?? '').trim();
+  const p = String(passRaw ?? '');
   if (/^https?:\/\//i.test(u) || /get\.php\?/i.test(u)) return { link: u };
-  if (u && !p) {
+  if (u && !p.trim()) {
     const parts = u.split(/[\s:;|]+/).filter(Boolean);
     if (parts.length === 2) return { user: parts[0], pass: parts[1] };
     return null;
   }
-  if (!u || !p) return null;
+  if (!u || !p.trim()) return null;
   return { user: u, pass: p };
 }
 

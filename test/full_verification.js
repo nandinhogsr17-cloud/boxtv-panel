@@ -2,8 +2,8 @@
 const BASE = 'https://boxtv-panel.onrender.com';
 const MAC = '02:AA:BB:CC:DD:EE';
 const KEY = 'TESTSUITE123';
-const USER = 'Nando5247';
-const PASS = 'dede12346';
+const USER = process.env.XTREAM_TEST_USER || '';
+const PASS = process.env.XTREAM_TEST_PASSWORD || '';
 
 const headers = {
   'X-MAC': MAC,
@@ -53,7 +53,7 @@ async function testSuite() {
     return `Host: ${j.serverHost} | Template: ${j.template}`;
   });
 
-  // 3. Login com Nando5247 / dede12346
+  // 3. Login Xtream real: credenciais apenas pelo ambiente local de teste.
   let loginData = null;
   await check('3. Login do Usuário (/api/v1/auth/login)', async () => {
     const res = await fetch(`${BASE}/api/v1/auth/login`, {

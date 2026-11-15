@@ -1,8 +1,6 @@
 import { norm } from './m3u.js';
 
 const DAY = 24 * 3600 * 1000;
-const PUBLIC_TMDB_KEY = '1cf50e6248dc270629e802686245c2c8';
-
 const TMDB_GENRES = {
   28: 'Ação',
   12: 'Aventura',
@@ -40,18 +38,18 @@ const TMDB_GENRES = {
 export class MetaService {
   constructor({ store, key = '', lang = 'pt-BR', fetchFn = fetch }) {
     this.store = store;
-    this._key = key || PUBLIC_TMDB_KEY;
+    this._key = key || '';
     this.lang = lang;
     this.fetchFn = fetchFn;
     this.memCache = new Map();
   }
 
   get key() {
-    return this._key || PUBLIC_TMDB_KEY;
+    return this._key || '';
   }
 
   set key(val) {
-    this._key = val && String(val).trim() ? String(val).trim() : PUBLIC_TMDB_KEY;
+    this._key = val && String(val).trim() ? String(val).trim() : '';
   }
 
   get enabled() {
