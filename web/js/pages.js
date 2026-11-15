@@ -132,6 +132,14 @@ export async function homePage(root, ctx) {
   focusFirst(root);
 }
 
+let activeLiveTeardown = null;
+export function stopLivePreview() {
+  if (typeof activeLiveTeardown === 'function') {
+    try { activeLiveTeardown(); } catch { }
+    activeLiveTeardown = null;
+  }
+}
+
 // ------------------------------------------------------------------ Canais Ao Vivo (layout moderno)
 export async function livePage(root, ctx) {
   // ── Montar estrutura antes de carregar dados ──
@@ -216,6 +224,7 @@ export async function livePage(root, ctx) {
     pvVideo.load();
     pvRetries = 0;
   }
+  activeLiveTeardown = pvTeardown;
 
   async function pvLoad(item) {
     pvSetState('loading');
@@ -279,6 +288,7 @@ export async function livePage(root, ctx) {
   });
 
   pvFullBtn.addEventListener('click', () => {
+    pvTeardown(); // Fecha o preview para não duplicar conexões no servidor Xtream
     const filtered = currentGroup ? allChannels.filter(x => x.group === currentGroup) : allChannels;
     const idx = currentItem ? filtered.indexOf(currentItem) : 0;
     ctx.play({ items: filtered, index: Math.max(0, idx) });

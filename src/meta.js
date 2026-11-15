@@ -31,6 +31,8 @@ const TMDB_GENRES = {
   10768: 'Guerra e Política',
 };
 
+const DEFAULT_TMDB_KEY = 'f090bb54758cabf231fb605d3e3e0468';
+
 /**
  * Serviço Inteligente de Metadados e Sinopses / Spoilers (TMDB + Cache Ultrarrápido).
  * Fornece sinopse em pt-BR, pôster em alta resolução, backdrop/banner, nota, gêneros e ano.
@@ -38,18 +40,18 @@ const TMDB_GENRES = {
 export class MetaService {
   constructor({ store, key = '', lang = 'pt-BR', fetchFn = fetch }) {
     this.store = store;
-    this._key = key || '';
+    this._key = key || DEFAULT_TMDB_KEY;
     this.lang = lang;
     this.fetchFn = fetchFn;
     this.memCache = new Map();
   }
 
   get key() {
-    return this._key || '';
+    return this._key || DEFAULT_TMDB_KEY;
   }
 
   set key(val) {
-    this._key = val && String(val).trim() ? String(val).trim() : '';
+    this._key = val && String(val).trim() ? String(val).trim() : DEFAULT_TMDB_KEY;
   }
 
   get enabled() {

@@ -23,3 +23,5 @@ services:
         value: "1"
       - key: DEFAULT_XTREAM_HOST
         value: "http://trevorcdn.online:80"
+      - key: TMDB_KEY
+        value: "f090bb54758cabf231fb605d3e3e0468"

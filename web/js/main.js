@@ -2,7 +2,7 @@ import { api, ApiError, login, logout, ensureToken } from './api.js';
 import { h, clear, spinner, message, toast } from './dom.js';
 import { initNav, focusFirst } from './nav.js';
 import { openPlayer, playerOpen } from './player.js';
-import { homePage, browsePage, favsPage, gamesPage, searchPage, detailPage, accountPage } from './pages.js';
+import { homePage, browsePage, favsPage, gamesPage, searchPage, detailPage, accountPage, stopLivePreview } from './pages.js';
 
 const CFG = window.IPTV_CONFIG || {};
 const NAME = CFG.appName || 'BoxTv';
@@ -116,6 +116,7 @@ function play(req) {
 const ctx = { open, play, go, back: () => (history.length > 1 ? history.back() : go('home')) };
 
 async function render() {
+  stopLivePreview();
   const { name, arg } = route();
   const root = h('div', {});
   main.replaceChildren(root);

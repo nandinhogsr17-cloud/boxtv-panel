@@ -57,7 +57,7 @@ export function createApp(options = {}) {
     adminPassword: options.adminPassword ?? env.ADMIN_PASSWORD ?? '',
     footballToken: options.footballToken ?? env.FOOTBALL_DATA_TOKEN ?? '',
     competitions: options.competitions ?? env.FOOTBALL_COMPETITIONS ?? '',
-    tmdbKey: options.tmdbKey ?? env.TMDB_KEY ?? '',
+    tmdbKey: options.tmdbKey ?? env.TMDB_KEY ?? 'f090bb54758cabf231fb605d3e3e0468',
     tz: options.tz ?? env.TZ_NAME ?? 'America/Sao_Paulo',
     ttlMin: Number(options.ttlMin ?? env.CATALOG_TTL_MIN ?? 360),
     trustProxy: (options.trustProxy ?? env.TRUST_PROXY) === '1' || options.trustProxy === true || (options.trustProxy === undefined && env.TRUST_PROXY === undefined && !!env.RENDER), // no Render liga sozinho

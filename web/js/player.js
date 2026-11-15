@@ -61,21 +61,24 @@ export function openPlayer(req) {
   const seek = h('div', { class: 'seek', role: 'slider', 'aria-label': 'Posição' }, h('div', { class: 'tr' }, seekFill));
   const timeEl = h('span', { class: 'time' }, '');
   const btn = (label, text, fn) => h('button', { class: 'ib', 'aria-label': label, title: label, tabindex: '-1', onclick: (e) => { fn(); e.currentTarget.blur(); } }, text);
-  const bPlay = btn('Pausar / continuar', '⏯', () => toggle());
-  const bBack = btn('Voltar 10 s', '⏪ 10', () => skip(-10));
-  const bFwd = btn('Avançar 10 s', '10 ⏩', () => skip(10));
-  const bPrev = btn('Anterior', '⏮', () => step(-1));
-  const bNext = btn('Próximo', '⏭', () => step(1));
+  const bPlay = btn('Pausar / continuar (Espaço)', '⏯', () => toggle());
+  const bBack10 = btn('Voltar 10 s (←)', '⏪ 10', () => skip(-10));
+  const bFwd10 = btn('Avançar 10 s (→)', '10 ⏩', () => skip(10));
+  const bBack30 = btn('Voltar 30 s', '⏪ 30', () => skip(-30));
+  const bFwd30 = btn('Avançar 30 s', '30 ⏩', () => skip(30));
+  const bPrev = btn('Anterior / Canal anterior (↑)', '⏮', () => step(-1));
+  const bNext = btn('Próximo / Próximo canal (↓)', '⏭', () => step(1));
+  const bReload = btn('Recarregar transmissão', '🔄', () => { retries = 0; start(true); });
   const bFav = btn('Favoritar', '☆', () => toggleFav());
-  const bMute = btn('Som', '🔊', () => { video.muted = !video.muted; bMute.textContent = video.muted ? '🔇' : '🔊'; });
-  const bFull = btn('Tela cheia', '⛶', () => fullscreen());
-  const bClose = h('button', { class: 'ib', tabindex: '-1', 'aria-label': 'Fechar', title: 'Fechar (Esc)', onclick: () => close() }, '✕');
+  const bMute = btn('Som (M)', '🔊', () => { video.muted = !video.muted; bMute.textContent = video.muted ? '🔇' : '🔊'; });
+  const bFull = btn('Tela cheia (F)', '⛶', () => fullscreen());
+  const bClose = h('button', { class: 'ib', tabindex: '-1', 'aria-label': 'Fechar (Esc)', title: 'Fechar (Esc)', onclick: () => close() }, '✕');
 
   const el = h('div', { id: 'player', tabindex: '-1' }, video,
     h('div', { class: 'ov' },
       h('div', { class: 'tb' }, bClose, h('div', { class: 'tt' }, titleB, titleS)),
       h('div', { class: 'bt' }, seek,
-        h('div', { class: 'ctl' }, bPrev, bBack, bPlay, bFwd, bNext, timeEl, h('span', { class: 'spacer' }), bFav, bMute, bFull))),
+        h('div', { class: 'ctl' }, bPrev, bBack30, bBack10, bPlay, bFwd10, bFwd30, bNext, timeEl, h('span', { class: 'spacer' }), bReload, bFav, bMute, bFull))),
     centerBox);
   document.body.append(el);
   document.body.style.overflow = 'hidden';
@@ -96,7 +99,7 @@ export function openPlayer(req) {
     titleS.textContent = live ? 'AO VIVO' : req.heading || '';
     bFav.textContent = it.favorite ? '★' : '☆';
     bPrev.style.display = bNext.style.display = items.length > 1 ? '' : 'none';
-    seek.style.display = bBack.style.display = bFwd.style.display = timeEl.style.display = live ? 'none' : '';
+    seek.style.display = bBack10.style.display = bFwd10.style.display = bBack30.style.display = bFwd30.style.display = timeEl.style.display = live ? 'none' : '';
 
     if (live) {
       api('/epg?id=' + encodeURIComponent(it.id)).then((r) => {
@@ -198,7 +201,13 @@ export function openPlayer(req) {
       info = await api('/web/play?id=' + encodeURIComponent(it.id));
     } catch (e) {
       if (closed || my !== gen) return;
-      if (e instanceof ApiError && e.code === 'upstream_status') return reconnect(`O servidor do canal respondeu erro ${e.body.upstreamStatus || ''}.`);
+      if (e instanceof ApiError && e.code === 'upstream_status') {
+        const code = e.body?.upstreamStatus;
+        if (code === 403) {
+          return fail('⚠️ Limite de conexões do provedor atingido (máx. 3 telas). Feche outras telas do BoxTv ou aguarde 1 minuto para o provedor liberar.', true);
+        }
+        return reconnect(`O servidor respondeu erro ${code || ''}.`);
+      }
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) return fail('Seu acesso não está ativo. Volte e confira a validade.', false);
       return reconnect('Sem conexão com o painel.');
     }
@@ -217,11 +226,39 @@ export function openPlayer(req) {
         else video.src = src;
       }
       if (closed || my !== gen) return;
-      const p = video.play();
-      if (p) p.catch(() => { if (!closed && my === gen) status(h('button', { class: 'btn primary', style: 'pointer-events:auto', onclick: () => { video.play(); status(null); } }, '▶ Assistir')); });
+
+      // Autoplay inteligente: inicia reprodução sem exigir segundo clique
+      try {
+        await video.play();
+        status(null);
+      } catch {
+        // Se o navegador bloquear som sem interação direta, inicia mudo e avisa para desmutar
+        try {
+          video.muted = true;
+          await video.play();
+          status(null);
+          toast('🔊 Toque ou clique no vídeo para ativar o som');
+          const unmute = () => {
+            video.muted = false;
+            bMute.textContent = '🔊';
+            window.removeEventListener('click', unmute);
+            window.removeEventListener('keydown', unmute);
+          };
+          window.addEventListener('click', unmute, { once: true });
+          window.addEventListener('keydown', unmute, { once: true });
+        } catch {
+          if (!closed && my === gen) {
+            status(h('button', {
+              class: 'btn primary',
+              style: 'pointer-events:auto;font-size:1.15rem;padding:14px 28px;border-radius:12px;box-shadow:0 8px 30px rgba(179,77,255,.5)',
+              onclick: () => { video.muted = false; video.play().catch(() => {}); status(null); }
+            }, '▶ Iniciar Reprodução'));
+          }
+        }
+      }
     } catch (e) {
       if (closed || my !== gen) return;
-      if (e && e.message === 'lib_unavailable') return fail('Não consegui carregar o player de vídeo (hls.js/mpegts.js). Veja o README: coloque os arquivos em web/vendor ou libere o acesso ao CDN.', false);
+      if (e && e.message === 'lib_unavailable') return fail('Não consegui carregar o player de vídeo (hls.js/mpegts.js). Recarregue a página.', false);
       if (e && e.message === 'unsupported') return fail('Este navegador não consegue tocar este tipo de stream. Tente Chrome/Edge ou use o aplicativo Android TV.', false);
       reconnect('Falha ao iniciar o vídeo.');
     }
@@ -318,10 +355,11 @@ export function openPlayer(req) {
     else if (k === ' ' || k === 'Enter' || k === 'k' || k === 'MediaPlayPause') toggle();
     else if (k === 'MediaPlay') video.play().catch(() => { });
     else if (k === 'MediaPause') video.pause();
-    else if (k === 'ArrowLeft' || k === 'MediaRewind') skip(-10);
-    else if (k === 'ArrowRight' || k === 'MediaFastForward') skip(10);
-    else if (k === 'j') skip(-10);
-    else if (k === 'l') skip(10);
+    else if (k === 'ArrowLeft' || k === 'MediaRewind') skip(e.shiftKey ? -30 : -10);
+    else if (k === 'ArrowRight' || k === 'MediaFastForward') skip(e.shiftKey ? 30 : 10);
+    else if (k === 'j' || k === 'J') skip(-10);
+    else if (k === 'l' || k === 'L') skip(10);
+    else if (k === 'r' || k === 'R') bReload.click();
     else if (k === 'ArrowUp' || k === 'ChannelUp' || k === 'PageUp') { if (live || items.length > 1) step(-1); else { video.volume = Math.min(1, video.volume + 0.1); } }
     else if (k === 'ArrowDown' || k === 'ChannelDown' || k === 'PageDown') { if (live || items.length > 1) step(1); else { video.volume = Math.max(0, video.volume - 0.1); } }
     else if (k === 'f' || k === 'F') fullscreen();
