@@ -68,7 +68,7 @@ fun LoginScreen(
     var username by remember { mutableStateOf(savedAuth.first.orEmpty()) }
     var password by remember { mutableStateOf(savedAuth.second.orEmpty()) }
     var serverHost by remember { mutableStateOf(DeviceIdentity.getXtreamHost(context, BuildConfig.XTREAM_URL)) }
-    var showServerConfig by remember { mutableStateOf(false) }
+    var showServerConfig by remember { mutableStateOf(serverHost.isBlank()) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
@@ -101,7 +101,7 @@ fun LoginScreen(
                     "account_expired" -> "Esta conta venceu. Fale com seu provedor para renovar."
                     "account_disabled" -> "Esta conta está desativada. Fale com seu provedor."
                     "provider_unavailable", "unreachable", "upstream_unavailable" -> "Não foi possível conectar ao servidor Xtream. Tente novamente."
-                    else -> e.message ?: "Não foi possível entrar. Verifique a conexão e tente novamente."
+                    else -> friendlyError(e)
                 }
             } finally {
                 loading = false
@@ -112,7 +112,7 @@ fun LoginScreen(
     androidx.compose.foundation.layout.BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.linearGradient(listOf(Color(0xFF10101A), Bg, Color(0xFF171329))))
+            .background(Brush.linearGradient(listOf(if (UiMode.gold) Color(0xFF0A1226) else Color(0xFF10101A), Bg, if (UiMode.gold) Color(0xFF0B1B3C) else Color(0xFF171329))))
             .padding(horizontal = 20.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -203,13 +203,15 @@ fun LoginScreen(
                     value = serverHost,
                     onValueChange = { serverHost = it },
                     label = { Text("Servidor Xtream (URL + porta)") },
+                    placeholder = { Text("Ex.: http://servidor.com:80") },
+                    supportingText = { Text("Peça ao seu provedor. Começa com http:// ou https://") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Accent, unfocusedBorderColor = Surface2, focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary),
                 )
                 Spacer(Modifier.height(8.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ActionButton(
+                    if (BuildConfig.XTREAM_URL.isNotBlank()) ActionButton(
                         text = "Restaurar Padrão",
                         onClick = {
                             serverHost = BuildConfig.XTREAM_URL

@@ -28,7 +28,9 @@ function decryptCache(data, key) {
  * - Uma única requisição por URL ao mesmo tempo
  */
 export class CatalogStore {
-  constructor({ dir, ttlMs = 6 * 3600 * 1000, userAgent = 'IPTVPanel/1.0', maxEntries = 2, fetchFn = fetch, encryptionKey = null }) {
+  constructor({ dir, ttlMs = 6 * 3600 * 1000, userAgent = 'IPTVPanel/1.0', maxEntries = 2, fetchFn = fetch, encryptionKey = null, extraUrl = '', extraLabel = 'Extras' }) {
+    this.extraUrl = extraUrl;
+    this.extraLabel = extraLabel;
     this.dir = dir;
     this.ttlMs = ttlMs;
     this.userAgent = userAgent;
@@ -66,6 +68,7 @@ export class CatalogStore {
         try {
           const xc = new XtreamCatalog({ origin: creds.origin, user: creds.user, pass: creds.pass, fetchFn: this.fetchFn });
           await xc.init();
+          await this._addExtra(xc);
           this._put(cacheKey, xc);
           return xc;
         } catch (err) {
@@ -91,6 +94,19 @@ export class CatalogStore {
     const p = this._load(url, hit).finally(() => this.inflight.delete(url));
     this.inflight.set(url, p);
     return p;
+  }
+
+  /** Lista própria (EXTRA_M3U_URL) somada ao catálogo Xtream. Falha aqui nunca derruba o catálogo. */
+  async _addExtra(xc) {
+    if (!this.extraUrl) return;
+    try {
+      const res = await this.fetchFn(this.extraUrl, { headers: { 'user-agent': this.userAgent }, signal: AbortSignal.timeout(20000) });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const n = xc.addExtra(new Catalog(await res.text()), this.extraLabel);
+      if (!n) xc.warnings.push('Lista extra vazia');
+    } catch (e) {
+      xc.warnings.push('Lista extra: ' + (e?.message || e));
+    }
   }
 
   /** Guarda uma lista que já foi baixada e validada (evita baixar duas vezes na ativação). */

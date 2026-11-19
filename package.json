@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node --max-old-space-size=400 server.js",
-    "test": "node --disable-warning=ExperimentalWarning test/run-tests.js && node --disable-warning=ExperimentalWarning test/web-tests.js && node --disable-warning=ExperimentalWarning test/activate-tests.js && node --disable-warning=ExperimentalWarning test/integrations-tests.js && node --disable-warning=ExperimentalWarning test/security-tests.js",
+    "test": "node --disable-warning=ExperimentalWarning test/run-tests.js && node --disable-warning=ExperimentalWarning test/web-tests.js && node --disable-warning=ExperimentalWarning test/activate-tests.js && node --disable-warning=ExperimentalWarning test/integrations-tests.js && node --disable-warning=ExperimentalWarning test/security-tests.js && node --disable-warning=ExperimentalWarning test/playback-tests.js && node --disable-warning=ExperimentalWarning test/snapshot-tests.js && node --disable-warning=ExperimentalWarning test/extra-tests.js && node --disable-warning=ExperimentalWarning test/msx-tests.js && node --disable-warning=ExperimentalWarning test/server-switch-tests.js",
     "test:github": "node scripts/test-github-connection.js"
   }
 }

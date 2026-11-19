@@ -1,71 +1,35 @@
-import { api, ApiError, login, logout, ensureToken } from './api.js';
+import { api, ApiError, login, logout, ensureToken, recoverSession } from './api.js';
 import { h, clear, spinner, message, toast } from './dom.js';
 import { initNav, focusFirst } from './nav.js';
 import { openPlayer, playerOpen } from './player.js';
-import { homePage, browsePage, favsPage, gamesPage, searchPage, detailPage, accountPage, stopLivePreview } from './pages.js';
+import { homePage, browsePage, favsPage, gamesPage, searchPage, detailPage, accountPage } from './pages.js';
 
 const CFG = window.IPTV_CONFIG || {};
 const NAME = CFG.appName || 'BoxTv';
 document.title = NAME;
 const app = document.getElementById('app');
 
-// ====================================================================== Splash Screen
-function showSplash() {
-  const splash = document.getElementById('splash');
-  if (!splash) return Promise.resolve();
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      splash.style.transition = 'opacity 0.5s ease';
-      splash.style.opacity = '0';
-      setTimeout(() => { splash.remove(); resolve(); }, 500);
-    }, 1200);
-  });
-}
-
-// ====================================================================== Login
+// ====================================================================== Login Xtream (sem código de ativação e sem M3U)
 function loginScreen(onSuccess) {
   let serverHost = '';
   let busy = false;
-
   const user = h('input', { class: 'login-input', type: 'text', placeholder: 'Usuário', autocomplete: 'username', autocapitalize: 'none', 'data-f': true });
   const pass = h('input', { class: 'login-input', type: 'password', placeholder: 'Senha', autocomplete: 'current-password', 'data-f': true });
   const host = h('input', { class: 'login-input', type: 'url', placeholder: 'Servidor Xtream (opcional)', autocomplete: 'url', 'data-f': true });
-
-  const hostWrap = h('div', { class: 'login-server-wrap' },
-    h('button', {
-      class: 'login-server-toggle', type: 'button',
-      onclick: (e) => {
-        const content = e.currentTarget.nextElementSibling;
-        const isOpen = content.style.maxHeight && content.style.maxHeight !== '0px';
-        content.style.maxHeight = isOpen ? '0px' : '120px';
-        content.style.opacity = isOpen ? '0' : '1';
-        e.currentTarget.classList.toggle('open', !isOpen);
-      }
-    }, '⚙️ Configurar servidor'),
-    h('div', { class: 'login-server-content', style: 'max-height:0;opacity:0;overflow:hidden;transition:max-height .3s ease,opacity .3s ease' },
-      h('label', { class: 'login-label' }, 'Endereço do servidor'),
-      host
-    )
-  );
-
-  const out = h('div', { class: 'login-error', role: 'status', 'aria-live': 'polite' });
-
-  const submit = h('button', { class: 'btn primary login-submit', 'data-f': true, type: 'button' }, 'Entrar');
-
+  const hostWrap = h('details', { style: 'width:100%;margin-top:12px;text-align:left' },
+    h('summary', { style: 'cursor:pointer;color:var(--dim);padding:8px 2px' }, '⚙ Configurar servidor'),
+    h('label', { class: 'dim', style: 'display:block;margin:8px 0' }, 'Endereço do servidor'), host);
+  const out = h('div', { class: 'dim', role: 'status', 'aria-live': 'polite', style: 'min-height:24px;text-align:center;margin-top:12px' });
+  const submit = h('button', { class: 'btn primary', 'data-f': true, style: 'width:100%;justify-content:center;padding:14px;margin-top:18px;font-weight:800' }, 'Entrar');
   submit.addEventListener('click', async () => {
     if (busy) return;
-    if (!user.value.trim() || !pass.value) {
-      out.innerHTML = '<span class="login-error-icon">⚠️</span> Informe seu usuário e sua senha.';
-      out.classList.add('visible');
-      return;
-    }
-    busy = true; submit.disabled = true;
-    submit.innerHTML = '<span class="login-spinner"></span> Conectando…';
-    out.classList.remove('visible');
+    if (!user.value.trim() || !pass.value) { out.textContent = 'Informe seu usuário e sua senha.'; return; }
+    busy = true; submit.disabled = true; submit.textContent = 'Conectando…';
+    out.textContent = 'Validando sua conta no servidor Xtream…';
     try {
       const result = await login(user.value.trim(), pass.value, host.value.trim() || serverHost || undefined);
       localStorage.setItem('iptv.logged_user', result.username || user.value.trim());
-      out.classList.remove('visible');
+      out.textContent = '';
       onSuccess({ status: 'active', name: result.username || user.value.trim(), expiresAt: result.expiresAt || null });
     } catch (e) {
       const code = e instanceof ApiError ? e.code : '';
@@ -79,36 +43,21 @@ function loginScreen(onSuccess) {
         too_many_attempts: 'Muitas tentativas. Aguarde antes de tentar novamente.',
         offline: 'Sem conexão com o painel. Verifique sua internet.'
       };
-      const msg = messages[code] || 'Não foi possível entrar. Verifique os dados e tente novamente.';
-      out.innerHTML = `<span class="login-error-icon">⚠️</span> ${msg}`;
-      out.classList.add('visible');
+      out.textContent = messages[code] || 'Não foi possível entrar. Verifique os dados e tente novamente.';
     } finally {
       busy = false; submit.disabled = false; submit.textContent = 'Entrar';
     }
   });
-
-  // Allow Enter key to submit
-  [user, pass, host].forEach(el => el.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit.click(); }));
-
-  const card = h('div', { class: 'login-card' },
-    h('div', { class: 'login-logo-wrap' },
-      h('img', { src: 'boxtv-logo.svg', alt: 'BoxTv', class: 'login-logo', style: 'width:68px;height:68px;max-width:68px;max-height:68px;object-fit:contain;margin:0 auto;display:block', onerror: (e) => { e.currentTarget.style.display='none'; } }),
-    ),
-    h('h1', { class: 'login-title' }, 'BoxTv ⚡'),
-    h('p', { class: 'login-subtitle' }, 'O MELHOR DO ENTRETENIMENTO · CANAIS AO VIVO · FILMES · SÉRIES · JOGOS'),
-    h('h2', { class: 'login-heading' }, 'Entrar com Xtream'),
-    h('p', { class: 'login-hint' }, 'Digite o usuário e a senha fornecidos pelo seu provedor.'),
-    h('div', { class: 'login-fields' }, user, pass),
-    hostWrap,
-    submit,
-    out,
-    h('p', { class: 'login-version' }, `v${CFG.version || '1.0'}`)
-  );
-
-  clear(app).append(h('div', { class: 'login-bg' }, h('div', { class: 'login-center' }, card)));
-
+  clear(app).append(h('div', { class: 'act' }, h('div', { class: 'box', style: 'max-width:460px;padding:30px 24px;border-radius:22px;border:1px solid rgba(255,255,255,.12);background:rgba(18,18,24,.97);box-shadow:0 12px 40px rgba(0,0,0,.6)' },
+    h('div', { style: 'display:flex;justify-content:center;margin-bottom:14px' }, h('img', { src: 'boxtv-logo.svg', alt: 'BoxTv', style: 'width:76px;height:76px;border-radius:20px;box-shadow:0 8px 30px rgba(179,77,255,.28)' })),
+    h('h1', { style: 'font-size:1.9rem;margin:0 0 6px;text-align:center;font-weight:900;color:#fff' }, 'BoxTv ⚡'),
+    h('p', { style: 'margin:0 0 22px;text-align:center;font-size:.82rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em' }, 'O MELHOR DO ENTRETENIMENTO · CANAIS AO VIVO · FILMES · SÉRIES · JOGOS'),
+    h('h2', { style: 'text-align:center;margin:0 0 8px' }, 'Entrar com Xtream'),
+    h('p', { class: 'dim', style: 'text-align:center;font-size:.9rem;margin:0 0 18px' }, 'Digite o usuário e a senha fornecidos pelo seu provedor.'),
+    h('div', { style: 'display:grid;gap:12px' }, user, pass), hostWrap, submit, out
+  )));
   api('/activate/config').then((cfg) => { serverHost = cfg.serverHost || ''; host.value = serverHost; }).catch(() => {});
-  setTimeout(() => { card.classList.add('visible'); user.focus({ preventScroll: true }); }, 50);
+  user.focus({ preventScroll: true });
 }
 
 async function gate() {
@@ -116,14 +65,19 @@ async function gate() {
   try {
     const current = await api('/status');
     if (current && current.status === 'active') return current;
-  } catch { /* aparelho ainda não autenticado */ }
+    // Servidor reiniciou e perdeu o cadastro: reativa com a sessão salva, sem pedir senha.
+    if (await recoverSession()) {
+      const again = await api('/status');
+      if (again && again.status === 'active') return again;
+    }
+  } catch { /* aparelho ainda não autenticado: exibe login Xtream */ }
   return new Promise((resolve) => loginScreen(resolve));
 }
 
 // ====================================================================== app principal
 const TABS = [
-  ['home', '🏠 Início'], ['live', '📡 Ao Vivo'], ['movies', '🎬 Filmes'], ['series', '🎭 Séries'],
-  ['favs', '❤️ Favoritos'], ['games', '⚽ Jogos'], ['search', '🔍 Buscar'], ['account', '👤 Conta'],
+  ['home', 'Início'], ['live', 'Ao Vivo'], ['movies', 'Filmes'], ['series', 'Séries'],
+  ['favs', 'Favoritos'], ['games', 'Jogos'], ['search', 'Buscar'], ['account', 'Conta'],
 ];
 let status = null;
 let detailBase = null;
@@ -142,6 +96,7 @@ async function open(item, direct = false) {
   } else if (item.type === 'series') {
     detailBase = item; location.hash = '#/item/' + encodeURIComponent(item.id);
   } else if (item.type === 'episode') {
+    // monta a lista da série para tocar o próximo episódio sozinho
     try {
       const s = await api('/series/' + encodeURIComponent(item.seriesId));
       const all = s.seasons.flatMap((x) => x.episodes);
@@ -166,7 +121,6 @@ function play(req) {
 const ctx = { open, play, go, back: () => (history.length > 1 ? history.back() : go('home')) };
 
 async function render() {
-  stopLivePreview();
   const { name, arg } = route();
   const root = h('div', {});
   main.replaceChildren(root);
@@ -182,8 +136,9 @@ async function render() {
     case 'account': return accountPage(root, ctx, status || {});
     case 'item': {
       const base = detailBase && detailBase.id === arg ? detailBase : { id: arg, type: 'series' };
+      // se abriu o endereço direto, descobre se é filme ou série
       if (!detailBase || detailBase.id !== arg) {
-        try { base.type = (await api('/item/' + encodeURIComponent(arg))).type; } catch { }
+        try { base.type = (await api('/item/' + encodeURIComponent(arg))).type; } catch { /* detalhe mostra o erro */ }
       }
       return detailPage(root, ctx, base);
     }
@@ -191,76 +146,48 @@ async function render() {
   }
 }
 
-function getInitials(name) {
-  if (!name) return '?';
-  const parts = name.trim().split(/[\s._-]+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
-
 function shell() {
   const loggedUser = localStorage.getItem('iptv.logged_user') || (status && status.name) || 'Conta';
 
+  // Formata o vencimento de forma elegante e discreta (ex: " · até 17/05/2034")
   let expHint = '';
-  let expShort = '';
   if (status && status.expiresAt) {
     const d = new Date(status.expiresAt);
     if (!isNaN(d.getTime())) {
-      expHint = `até ${d.toLocaleDateString('pt-BR')}`;
-      expShort = `· ${d.toLocaleDateString('pt-BR')}`;
+      expHint = ` · até ${d.toLocaleDateString('pt-BR')}`;
     }
   }
 
-  const initials = getInitials(loggedUser);
-
-  // Online indicator
-  const onlineDot = h('span', { class: 'online-dot', title: 'Conectado' });
-
-  const userBadge = h('button', {
-    class: 'user-badge', 'data-f': true,
-    title: `${loggedUser}${expHint ? ' · ' + expHint : ''} · Clique para sair`,
-    'aria-label': 'Conta do usuário',
-    onclick: () => { if (confirm('Deseja sair da conta?')) logout(); }
-  },
-    onlineDot,
-    h('div', { class: 'user-avatar' }, initials),
-    h('div', { class: 'user-info' },
-      h('span', { class: 'user-name' }, loggedUser),
-      expHint ? h('span', { class: 'user-exp' }, expHint) : null
-    )
-  );
-
   nav = h('nav', { class: 'top', 'aria-label': 'Menu' },
-    h('a', { class: 'brand', href: '#/home', 'aria-label': 'BoxTv – Início' },
-      h('div', { class: 'brand-icon' }, '▶'),
-      h('span', { class: 'brand-name' }, 'BoxTv')
+    h('div', { class: 'brand', style: 'display:flex;align-items:center;gap:8px' },
+      h('img', { src: 'boxtv-logo.svg', alt: 'BoxTv', style: 'width:28px;height:28px;border-radius:6px' }),
+      h('span', {}, 'BoxTv')
     ),
-    h('div', { class: 'nav-pills' },
-      ...TABS.map(([id, label]) => h('button', { class: 'pill', 'data-f': true, 'data-tab': id, onclick: () => go(id) }, label))
-    ),
-    userBadge
-  );
-
+    TABS.map(([id, label]) => h('button', { class: 'pill', 'data-f': true, 'data-tab': id, onclick: () => go(id) }, label)),
+    h('button', {
+      class: 'keybtn', 'data-f': true, title: `Usuário conectado: ${loggedUser}${expHint} (clique para sair)`, 'aria-label': 'Conta do usuário',
+      style: 'margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:var(--txt);font-size:.85rem',
+      onclick: () => {
+        if (confirm('Deseja sair da conta?')) logout();
+      }
+    },
+      '👤',
+      h('span', { style: 'font-weight:700' }, loggedUser),
+      expHint ? h('small', { style: 'color:var(--dim2);font-weight:500;font-size:.76rem' }, expHint) : null));
   main = h('main', {});
   clear(app).append(nav, main);
   window.addEventListener('hashchange', render);
   render();
-
-  // Poll status
+  // confere o acesso de tempos em tempos (vencimento/bloqueio no painel)
   setInterval(async () => {
     try {
       const s = await api('/status');
       status = s;
-      // Update online dot
-      onlineDot.style.background = '#22c55e';
-      if (s.status !== 'active') location.reload();
-    } catch (e) {
-      onlineDot.style.background = '#ef4444';
-      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) location.reload();
-    }
+      if (s.status !== 'active' && !(await recoverSession())) location.reload();
+    } catch (e) { if (e instanceof ApiError && (e.status === 401 || e.status === 403)) location.reload(); }
   }, 60000);
-
-  setInterval(() => ensureToken().catch(() => {}), 30 * 60000);
+  // renova o token de imagens antes de vencer
+  setInterval(() => ensureToken().catch(() => { }), 30 * 60000);
 }
 
 initNav({
@@ -274,7 +201,6 @@ initNav({
 });
 
 (async () => {
-  await showSplash();
   status = await gate();
   try { await ensureToken(); } catch { /* imagens http ficam sem capa */ }
   shell();

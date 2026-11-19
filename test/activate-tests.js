@@ -320,13 +320,11 @@ section('Login só com usuário e senha (servidor fixo)');
   px.close();
 }
 
-section('Página /ativar');
+section('Página /ativar removida');
 {
   const r = await fetch(B + '/ativar');
-  const html = await r.text();
-  check('/ativar abre a página pública', r.status === 200 && html.includes('id="f"') && html.includes('js/ativar.js'));
-  check('/ativar tem CSP', (r.headers.get('content-security-policy') || '').includes("script-src 'self'"));
-  check('/js/ativar.js existe', (await fetch(B + '/js/ativar.js')).status === 200);
+  check('/ativar não existe mais (404)', r.status === 404, 'status ' + r.status);
+  check('/js/ativar.js não existe mais', (await fetch(B + '/js/ativar.js')).status === 404);
 }
 
 await app.close();

@@ -144,11 +144,26 @@ data class StatusResponse(
 )
 
 @Serializable
+data class AccountResponse(
+    val maxConnections: Int? = null,
+    val activeConnections: Int? = null,
+)
+
+@Serializable
 data class LoginRequest(
     val username: String,
     val password: String,
     val mac: String,
     val key: String,
-    val template: String? = null,
     val serverHost: String? = null,
 )
+
+/** Servidor IPTV único definido no painel (vale para todos os aparelhos e o site). */
+@Serializable
+data class ServerInfo(
+    val host: String = "",
+    val rev: Int = 0,
+    val updatedAt: Long = 0,
+)
+
+data class ServerPush(val ok: Boolean, val message: String? = null, val needsConfirm: Boolean = false, val migrated: Int = 0)

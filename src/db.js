@@ -312,6 +312,9 @@ export class Store {
   getProgress(mac, id) {
     return this.s.progGet.get(mac, id) ?? null;
   }
+  clearProgress(mac) {
+    this.s.deleteProg.run(mac);
+  }
   progressMap(mac) {
     return new Map(this.s.progAll.all(mac).map((r) => [r.item_id, r]));
   }

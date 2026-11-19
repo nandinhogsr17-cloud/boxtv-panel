@@ -6,7 +6,6 @@ import { focusFirst } from './nav.js';
 const errText = (e) => (e instanceof ApiError && e.code === 'offline') ? 'Sem conexão com o painel.' : 'Não foi possível carregar. Tente de novo.';
 const retry = (root, fn) => root.replaceChildren(message(''), h('div', { class: 'btns', style: 'justify-content:center' }, h('button', { class: 'btn', 'data-f': true, onclick: fn }, 'Tentar de novo')));
 
-// ------------------------------------------------------------------ Helpers
 async function toggleFav(it) {
   const id = it.type === 'episode' ? it.seriesId : it.id;
   if (it.favorite) await api('/favorites/' + encodeURIComponent(id), { method: 'DELETE' });
@@ -21,102 +20,44 @@ function strip(title, items, ctx, opts = {}) {
   return h('section', { class: 'row' }, h('h2', {}, title), s);
 }
 
-/** Normalize synopsis: returns a clean string or empty string if unavailable */
-function cleanSynopsis(text) {
-  if (!text) return '';
-  const t = text.trim();
-  if (!t) return '';
-  const BAD = [
-    'sinopse não disponível para este título.',
-    'sinopse não disponível',
-    'sinopse não encontrada.',
-    'sinopse não encontrada',
-    'não disponível',
-    'n/a',
-  ];
-  if (BAD.includes(t.toLowerCase())) return '';
-  return t;
-}
-
-function defaultSynopsis(item) {
-  const type = item.type === 'series' ? 'série' : item.type === 'movie' ? 'filme' : 'conteúdo';
-  return `Aproveite este ${type} em alta definição. Clique em Assistir para começar.`;
-}
-
-// ------------------------------------------------------------------ Hero Block
 function heroBlock(it, ctx) {
   const bg = h('div', { class: 'bg' });
   const u = imgUrl(it.logo);
   if (u) bg.style.backgroundImage = `url("${u.replace(/"/g, '%22')}")`;
-
   const resume = it.positionMs > 10000 && it.durationMs > 0;
-  const pct = resume ? Math.min(100, Math.round(it.positionMs / it.durationMs * 100)) : 0;
+  const sub = it.type === 'series' ? 'Série' : it.type === 'movie' ? 'Filme' : it.type === 'episode' ? 'Episódio' : 'Canal';
 
-  const typeLabels = { movie: 'FILME', series: 'SÉRIE', live: 'AO VIVO', episode: 'EPISÓDIO' };
-  const typeBadge = h('span', {
-    class: 'hero-type-badge',
-    style: `background:${it.type === 'live' ? '#ef4444' : 'var(--accent)'};color:#fff;font-size:.7rem;font-weight:900;letter-spacing:.12em;padding:3px 10px;border-radius:4px;text-transform:uppercase`
-  }, typeLabels[it.type] || it.type.toUpperCase());
+  const synopsisEl = h('p', { class: 'hero-desc', style: 'color:#ddd;max-width:620px;font-size:.95rem;line-height:1.5;margin:10px 0 20px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 1px 8px rgba(0,0,0,0.8)' }, '');
+  const ratingEl = h('span', { class: 'hero-rating', style: 'display:none;background:rgba(255,255,255,0.18);padding:3px 8px;border-radius:5px;font-weight:700;font-size:.82rem' }, '');
 
-  const synopsisEl = h('p', { class: 'hero-desc' }, '⌛ Carregando informações…');
-  const ratingEl = h('span', { class: 'hero-rating', style: 'display:none' }, '');
-
-  // Fetch meta asynchronously
+  // Busca sinopse atualizada instantânea via /api/v1/meta
   api('/meta?id=' + encodeURIComponent(it.id)).then((meta) => {
-    if (!meta) {
-      synopsisEl.textContent = defaultSynopsis(it);
-      return;
+    if (meta) {
+      if (meta.overview) synopsisEl.textContent = meta.overview;
+      if (meta.backdrop) bg.style.backgroundImage = `url("${meta.backdrop.replace(/"/g, '%22')}")`;
+      if (meta.rating) {
+        ratingEl.textContent = `⭐ ${meta.rating}`;
+        ratingEl.style.display = 'inline-block';
+      }
     }
-    const syn = cleanSynopsis(meta.overview);
-    synopsisEl.textContent = syn || defaultSynopsis(it);
-    if (meta.backdrop) bg.style.backgroundImage = `url("${meta.backdrop.replace(/"/g, '%22')}")`;
-    if (meta.rating) {
-      ratingEl.textContent = `⭐ ${meta.rating}`;
-      ratingEl.style.display = 'inline-block';
-    }
-  }).catch(() => {
-    synopsisEl.textContent = defaultSynopsis(it);
-  });
+  }).catch(() => { });
 
   const metaRow = h('div', { class: 'sub', style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' },
-    h('span', {}, [it.year, it.group].filter(Boolean).join(' · ')),
+    h('span', {}, [sub, it.year, it.group].filter(Boolean).join(' · ')),
     ratingEl
   );
 
-  // Play button (possibly with progress bar)
-  let playBtnContent;
-  if (resume && pct > 0) {
-    const progressBar = h('div', { style: 'position:absolute;bottom:0;left:0;height:3px;background:rgba(255,255,255,0.3);border-radius:0 0 6px 6px;width:100%' },
-      h('div', { style: `height:100%;width:${pct}%;background:var(--accent2);border-radius:inherit;transition:width .3s` })
-    );
-    playBtnContent = [h('span', {}, '▶ Continuar assistindo'), progressBar];
-  } else {
-    playBtnContent = '▶ Assistir';
-  }
-
-  const playBtn = h('button', {
-    class: 'btn primary hero-play-btn',
-    'data-f': true,
-    style: 'position:relative;overflow:hidden',
-    onclick: () => ctx.open(it, true)  // direct=true → opens player immediately
-  }, ...(Array.isArray(playBtnContent) ? playBtnContent : [playBtnContent]));
-
   return h('section', { class: 'hero' }, bg,
     h('div', { class: 'in' },
-      typeBadge,
       h('h1', {}, it.title),
       metaRow,
       synopsisEl,
       h('div', { class: 'btns' },
-        playBtn,
+        h('button', { class: 'btn primary', 'data-f': true, onclick: () => ctx.open(it, true) }, resume ? '▶ Continuar assistindo' : '▶ Assistir'),
         h('button', { class: 'btn', 'data-f': true, onclick: async (e) => { try { await toggleFav(it); e.currentTarget.textContent = it.favorite ? '✓ Na minha lista' : '＋ Minha lista'; } catch { toast('Não foi possível favoritar'); } } }, it.favorite ? '✓ Na minha lista' : '＋ Minha lista'),
-        it.type === 'series' || it.type === 'movie' ? h('button', { class: 'btn', 'data-f': true, onclick: () => ctx.open(it) }, 'ⓘ Mais detalhes') : null
-      )
-    )
-  );
+        it.type === 'series' || it.type === 'movie' ? h('button', { class: 'btn', 'data-f': true, onclick: () => ctx.open(it) }, 'ⓘ Mais detalhes') : null)));
 }
 
-// ------------------------------------------------------------------ Game Card
 function gameCard(g, ctx, showDate = false) {
   const side = (name, crest) => {
     const box = h('div', { class: 'team' });
@@ -138,23 +79,12 @@ function gameCard(g, ctx, showDate = false) {
   return h('div', { class: 'game' + (isLive ? ' is-live' : '') },
     h('div', { class: 'meta' },
       h('span', {}, `${datePrefix}${g.competition || 'Futebol'}`),
-      isLive
-        ? h('span', { class: 'tag live live-pulse' }, '🔴 AO VIVO')
-        : h('span', { class: 'tag' }, statusLabel)
+      h('span', { class: 'tag' + (isLive ? ' live' : '') }, statusLabel)
     ),
-    h('div', { class: 'teams' },
-      side(g.home, g.homeCrest),
-      h('div', { class: 'vs' + (isLive ? ' live-score' : '') }, mid),
-      side(g.away, g.awayCrest)
-    ),
+    h('div', { class: 'teams' }, side(g.home, g.homeCrest), h('div', { class: 'vs' + (isLive ? ' live-score' : '') }, mid), side(g.away, g.awayCrest)),
     g.channels && g.channels.length
-      ? h('div', { class: 'chs' }, g.channels.slice(0, 6).map((c, i) =>
-        h('button', { class: 'btn sm primary', 'data-f': true, title: c.title, onclick: () => ctx.play({ items: g.channels, index: i }) },
-          '⚽ ' + (c.title.length > 22 ? c.title.slice(0, 21) + '…' : c.title)
-        )
-      ))
-      : h('div', { class: 'hint' }, g.channelHint ? `Passa em: ${g.channelHint} (canal não encontrado na sua lista)` : 'Canal não informado')
-  );
+      ? h('div', { class: 'chs' }, g.channels.slice(0, 6).map((c, i) => h('button', { class: 'btn sm primary', 'data-f': true, title: c.title, onclick: () => ctx.play({ items: g.channels, index: i }) }, '▶ ' + (c.title.length > 22 ? c.title.slice(0, 21) + '…' : c.title))))
+      : h('div', { class: 'hint' }, g.channelHint ? `Passa em: ${g.channelHint} (canal não encontrado na sua lista)` : 'Canal não informado'));
 }
 
 // ------------------------------------------------------------------ Início
@@ -165,7 +95,7 @@ export async function homePage(root, ctx) {
   const frag = document.createDocumentFragment();
   if (data.hero) frag.append(heroBlock(data.hero, ctx));
 
-  // Continuar Assistindo
+  // Fileira Netflix: Continuar Assistindo com destaque visual imediato
   const continueRow = data.rows.find(r => r.kind === 'continue');
   if (continueRow && continueRow.items.length) {
     frag.append(strip('▶ Continuar assistindo', continueRow.items, ctx, {
@@ -178,14 +108,12 @@ export async function homePage(root, ctx) {
     }));
   }
 
-  // Jogos
+  // Jogos de futebol de hoje
   if (data.games && data.games.length) {
     const s = h('div', { class: 'strip' });
     for (const g of data.games.slice(0, 8)) {
-      const isLive = !!g.isLive || /live|progress|in_play|paused/i.test(g.status || '');
       s.append(h('button', { class: 'card wide', 'data-f': true, onclick: () => ctx.go('games') },
         h('div', { class: 'art', style: 'aspect-ratio:16/9;flex-direction:column;gap:6px;padding:8px;text-align:center' },
-          isLive ? h('div', { class: 'live-pulse', style: 'font-size:.7rem;font-weight:900;color:#ef4444;letter-spacing:.1em;margin-bottom:4px' }, '🔴 AO VIVO') : null,
           h('div', { style: 'font-weight:800;font-size:1.4rem' }, g.time),
           h('div', { style: 'font-size:.85rem;font-weight:700' }, `${g.home} × ${g.away}`)),
         h('div', { class: 'cap' }, g.competition || 'Futebol', h('small', {}, g.channels.length ? g.channels[0].title : g.channelHint || ''))));
@@ -193,7 +121,7 @@ export async function homePage(root, ctx) {
     frag.append(h('section', { class: 'row' }, h('h2', {}, '⚽ Jogos em destaque'), s));
   }
 
-  // Demais categorias
+  // Outras categorias recomendadas (exceto o continueRow já exibido no topo)
   for (const r of data.rows) {
     if (r.kind === 'continue') continue;
     frag.append(strip(r.title, r.items, ctx, { wide: r.kind === 'continue' }));
@@ -204,28 +132,23 @@ export async function homePage(root, ctx) {
   focusFirst(root);
 }
 
-// ------------------------------------------------------------------ Live Preview State
-let activeLiveTeardown = null;
-export function stopLivePreview() {
-  if (typeof activeLiveTeardown === 'function') {
-    try { activeLiveTeardown(); } catch { }
-    activeLiveTeardown = null;
-  }
-}
-
-// ------------------------------------------------------------------ Canais Ao Vivo
+// ------------------------------------------------------------------ Canais Ao Vivo (layout moderno)
 export async function livePage(root, ctx) {
-  const catList = h('div', { class: 'live-cats' }, h('h3', {}, '📡 Categorias'));
+  // ── Montar estrutura antes de carregar dados ──
+  const catList = h('div', { class: 'live-cats' },
+    h('h3', {}, '📡 Categorias'));
   const searchInput = h('input', { type: 'search', placeholder: '🔍 Buscar canal…', autocomplete: 'off', 'aria-label': 'Buscar canal' });
   const chList = h('div', { class: 'live-list' });
   const listWrap = h('div', { class: 'live-list-wrap' },
     h('div', { class: 'live-search' }, searchInput),
     chList);
 
+  // Preview player
   const pvVideo = h('video', { playsinline: true, autoplay: true, muted: true, style: 'width:100%;height:100%;background:#000;object-fit:contain' });
-  const pvBadge = h('div', { class: 'pv-live-badge live-pulse' }, '🔴 AO VIVO');
-  const pvOv = h('div', { class: 'pv-ov' }, h('div', { class: 'pv-idle' }, h('span', {}, '📺'), 'Escolha um canal'));
-  const pvPlayerBox = h('div', { class: 'live-player-box', style: 'cursor:pointer', title: 'Clique para abrir em tela cheia', onclick: () => pvFullBtn.click() }, pvVideo, pvBadge, pvOv);
+  const pvBadge = h('div', { class: 'pv-live-badge' }, 'AO VIVO');
+  const pvOv = h('div', { class: 'pv-ov' },
+    h('div', { class: 'pv-idle' }, h('span', {}, '📺'), 'Escolha um canal'));
+  const pvPlayerBox = h('div', { class: 'live-player-box' }, pvVideo, pvBadge, pvOv);
   const pvTitle = h('span', { class: 'pv-title' }, 'Nenhum canal');
   const pvFavBtn = h('button', { title: 'Favoritar', style: 'font-size:1.1rem' }, '☆');
   const pvFullBtn = h('button', { class: 'pv-full', 'data-f': true }, '⛶ Tela Cheia');
@@ -236,8 +159,13 @@ export async function livePage(root, ctx) {
 
   root.replaceChildren(h('div', { class: 'live-layout' }, catList, listWrap, preview));
 
-  let allChannels = [], allGroups = [], currentGroup = null, currentItem = null;
-  let pvHls = null, pvMp = null, pvRetries = 0;
+  // ── Estado ──
+  let allChannels = [];
+  let allGroups = [];
+  let currentGroup = null;
+  let currentItem = null;
+  let pvHls = null, pvMp = null;
+  let pvRetries = 0;
   const libs = {};
 
   function loadScript(urls, name) {
@@ -258,13 +186,13 @@ export async function livePage(root, ctx) {
   }
 
   function pvSetState(state, msg) {
+    // state: 'loading' | 'idle' | 'playing' | 'error'
     if (state === 'playing') {
       pvPlayerBox.classList.add('playing');
-      pvBadge.style.display = 'block';
     } else {
       pvPlayerBox.classList.remove('playing');
-      pvBadge.style.display = 'none';
     }
+
     if (state === 'loading') {
       pvOv.style.display = '';
       pvOv.replaceChildren(h('div', { class: 'pv-spin' }));
@@ -281,7 +209,6 @@ export async function livePage(root, ctx) {
 
   function pvTeardown() {
     pvPlayerBox.classList.remove('playing');
-    pvBadge.style.display = 'none';
     try { pvHls?.destroy(); } catch { }
     try { pvMp?.pause(); pvMp?.unload(); pvMp?.detachMediaElement(); pvMp?.destroy(); } catch { }
     pvHls = pvMp = null;
@@ -289,23 +216,27 @@ export async function livePage(root, ctx) {
     pvVideo.load();
     pvRetries = 0;
   }
-  activeLiveTeardown = pvTeardown;
 
   async function pvLoad(item) {
     pvSetState('loading');
     pvTeardown();
     let info;
-    try { info = await api('/web/play?id=' + encodeURIComponent(item.id)); }
-    catch (e) { pvSetState('error', 'Erro ao obter o stream.'); return; }
+    try {
+      info = await api('/web/play?id=' + encodeURIComponent(item.id));
+    } catch (e) {
+      pvSetState('error', 'Erro ao obter o stream.');
+      return;
+    }
     const { kind, src, token } = info;
     if (token) setToken(token);
+    // O src vem como /p/v?... (relativo ao servidor)
     const absUrl = src.startsWith('http') ? src : (window.location.origin + src);
     try {
       if (kind === 'hls') {
         const Hls = await loadScript(['vendor/hls.min.js'], 'Hls');
         if (Hls && Hls.isSupported()) {
           pvHls = new Hls({ liveSyncDurationCount: 3, maxBufferLength: 20, manifestLoadingMaxRetry: 2, levelLoadingMaxRetry: 2 });
-          pvHls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) { if (pvRetries++ < 3) setTimeout(() => pvLoad(item), 2000); else pvSetState('error', 'Stream interrompido.'); } });
+          pvHls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) { if (pvRetries++ < 3) { setTimeout(() => pvLoad(item), 2000); } else pvSetState('error', 'Stream interrompido.'); } });
           pvHls.on(Hls.Events.MANIFEST_PARSED, () => pvVideo.play().catch(() => { }));
           pvHls.loadSource(absUrl);
           pvHls.attachMedia(pvVideo);
@@ -326,7 +257,6 @@ export async function livePage(root, ctx) {
           });
           pvMp.attachMediaElement(pvVideo);
           pvMp.load();
-          try { pvMp.play(); } catch { }
           pvVideo.play().catch(() => { });
         } else {
           pvSetState('error', 'Navegador não suporta este formato.');
@@ -335,7 +265,9 @@ export async function livePage(root, ctx) {
         pvVideo.src = absUrl;
         pvVideo.play().catch(() => { });
       }
-    } catch { pvSetState('error', 'Falha ao iniciar o player.'); }
+    } catch {
+      pvSetState('error', 'Falha ao iniciar o player.');
+    }
   }
 
   pvVideo.addEventListener('playing', () => pvSetState('playing'));
@@ -347,7 +279,6 @@ export async function livePage(root, ctx) {
   });
 
   pvFullBtn.addEventListener('click', () => {
-    pvTeardown();
     const filtered = currentGroup ? allChannels.filter(x => x.group === currentGroup) : allChannels;
     const idx = currentItem ? filtered.indexOf(currentItem) : 0;
     ctx.play({ items: filtered, index: Math.max(0, idx) });
@@ -357,9 +288,13 @@ export async function livePage(root, ctx) {
     if (currentItem === item) return;
     currentItem = item;
     pvRetries = 0;
+
+    // Update active state in list
     chList.querySelectorAll('.live-ch').forEach(el => el.classList.remove('active'));
     const el = chList.querySelector(`[data-id="${CSS.escape(item.id)}"]`);
     if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'nearest' }); }
+
+    // Update preview info
     pvTitle.textContent = item.title;
     pvFavBtn.textContent = item.favorite ? '★' : '☆';
     const epgBox = h('div', { class: 'pv-epg' }, h('span', { class: 'pv-epg-load' }, '📡 Consultando guia de programação (EPG)…'));
@@ -368,16 +303,20 @@ export async function livePage(root, ctx) {
       h('div', { class: 'pv-ch-grp' }, item.group || ''),
       epgBox,
     );
+
+    // Carrega EPG do canal em segundo plano
     api('/epg?id=' + encodeURIComponent(item.id)).then((res) => {
       if (currentItem !== item) return;
       if (!res || !res.epg || !res.epg.current) {
         epgBox.replaceChildren(h('div', { class: 'pv-no-epg' }, 'Programação atual não informada'));
         return;
       }
-      const cur = res.epg.current, next = res.epg.next;
+      const cur = res.epg.current;
+      const next = res.epg.next;
       const startTime = cur.startMs ? new Date(cur.startMs).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
       const stopTime = cur.stopMs ? new Date(cur.stopMs).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
       const timeStr = startTime && stopTime ? ` (${startTime} - ${stopTime})` : '';
+
       epgBox.replaceChildren(
         h('div', { class: 'pv-now' },
           h('div', { class: 'pv-now-tag' }, '🔴 NO AR'),
@@ -393,6 +332,7 @@ export async function livePage(root, ctx) {
     }).catch(() => {
       if (currentItem === item) epgBox.replaceChildren(h('div', { class: 'pv-no-epg' }, 'Guia não disponível'));
     });
+
     pvLoad(item);
   }
 
@@ -417,7 +357,9 @@ export async function livePage(root, ctx) {
       }
       const el = h('button', {
         class: 'live-ch' + (it === currentItem ? ' active' : ''),
-        'data-id': it.id, 'data-f': true, title: it.title,
+        'data-id': it.id,
+        'data-f': true,
+        title: it.title,
         onclick: () => selectChannel(it),
         ondblclick: () => ctx.play({ items, index: i }),
       },
@@ -425,7 +367,7 @@ export async function livePage(root, ctx) {
         h('div', { class: 'ch-info' },
           h('div', { class: 'ch-name' }, it.title),
           h('div', { class: 'ch-sub' }, it.group || '')),
-        h('span', { class: 'play-ic', title: 'Assistir em tela cheia', onclick: (e) => { e.stopPropagation(); pvTeardown(); ctx.play({ items, index: i }); } }, '▶'));
+        h('span', { class: 'play-ic' }, '▶'));
       chList.append(el);
     });
   }
@@ -437,9 +379,11 @@ export async function livePage(root, ctx) {
   }
 
   function applyFilter() { buildChannelList(filterChannels()); }
+
   searchInput.addEventListener('input', applyFilter);
 
   function buildCats() {
+    // remove existing category buttons (keep h3)
     catList.querySelectorAll('.live-cat-btn').forEach(e => e.remove());
     const mk = (name, label, count) => {
       const btn = h('button', {
@@ -464,6 +408,7 @@ export async function livePage(root, ctx) {
     }
   }
 
+  // ── Carregar dados ──
   chList.replaceChildren(spinner());
   try {
     const r = await api('/browse?type=live&offset=0&limit=2000');
@@ -472,6 +417,7 @@ export async function livePage(root, ctx) {
     buildCats();
     buildChannelList(allChannels);
     if (allChannels.length) {
+      // auto-selecionar o primeiro canal
       const first = allChannels[0];
       currentItem = first;
       pvTitle.textContent = first.title;
@@ -500,12 +446,15 @@ export async function vodPage(root, ctx, type) {
   const searchInput = h('input', { type: 'search', placeholder: `🔍 Buscar ${label.toLowerCase()}…`, autocomplete: 'off', 'aria-label': `Buscar ${label}` });
   const resultsInfo = h('span', { class: 'vod-results' }, '');
   const toolbar = h('div', { class: 'vod-toolbar' }, searchInput, resultsInfo);
+
   const foldersWrap = h('div', {});
   const grid = h('div', { class: 'grid' });
   const moreBtn = h('div', { class: 'more' });
   const breadcrumb = h('div', { class: 'vod-breadcrumb' });
+
   root.replaceChildren(toolbar, breadcrumb, foldersWrap, grid, moreBtn);
 
+  // Ícones por categoria
   function catIcon(name) {
     if (!name) return '📂';
     const n = name.toLowerCase();
@@ -545,20 +494,29 @@ export async function vodPage(root, ctx, type) {
   }
 
   function renderFolders() {
-    if (state.group || state.search) { foldersWrap.replaceChildren(); return; }
+    if (state.group || state.search) {
+      foldersWrap.replaceChildren();
+      return;
+    }
     if (!allGroups.length) { foldersWrap.replaceChildren(); return; }
     const fg = h('div', { class: 'folder-grid' });
+    // "Todos" folder
     const totalAll = allGroups.reduce((s, g) => s + g.count, 0);
-    fg.append(h('button', { class: 'folder-btn', 'data-f': true, onclick: () => { state.group = null; renderFolders(); loadItems(true); } },
-      h('span', { class: 'fol-icon' }, isMovie ? '🎬' : '🎭'),
-      h('span', { class: 'fol-name' }, `Todos os ${label}`),
-      h('span', { class: 'fol-count' }, `${totalAll} itens`)));
+    const mkFolderAll = () => {
+      const btn = h('button', { class: 'folder-btn', 'data-f': true, onclick: () => { state.group = null; renderFolders(); loadItems(true); } },
+        h('span', { class: 'fol-icon' }, isMovie ? '🎬' : '🎭'),
+        h('span', { class: 'fol-name' }, `Todos os ${label}`),
+        h('span', { class: 'fol-count' }, `${totalAll} itens`));
+      return btn;
+    };
+    fg.append(mkFolderAll());
     for (const g of allGroups) {
       const icon = catIcon(g.name);
-      fg.append(h('button', { class: 'folder-btn', 'data-f': true, onclick: () => { state.group = g.name; renderFolders(); buildBreadcrumb(); loadItems(true); } },
+      const btn = h('button', { class: 'folder-btn', 'data-f': true, onclick: () => { state.group = g.name; renderFolders(); buildBreadcrumb(); loadItems(true); } },
         h('span', { class: 'fol-icon' }, icon),
         h('span', { class: 'fol-name' }, g.name.replace(/^(filmes|séries|series)\s*[-–]\s*/i, '').replace(/-PLUS$/i, '').trim()),
-        h('span', { class: 'fol-count' }, `${g.count} itens`)));
+        h('span', { class: 'fol-count' }, `${g.count} itens`));
+      fg.append(btn);
     }
     foldersWrap.replaceChildren(fg);
   }
@@ -589,23 +547,33 @@ export async function vodPage(root, ctx, type) {
         moreBtn.append(h('button', { class: 'btn', 'data-f': true, onclick: () => loadItems(false) },
           `Carregar mais (${state.total - state.offset})`));
       }
-      if (reset) { buildBreadcrumb(); renderFolders(); focusFirst(grid); }
+      if (reset) {
+        buildBreadcrumb();
+        renderFolders();
+        focusFirst(grid);
+      }
     } catch (e) {
       grid.replaceChildren(message(errText(e)));
       moreBtn.replaceChildren(h('button', { class: 'btn', 'data-f': true, onclick: () => loadItems(true) }, 'Tentar de novo'));
     } finally { state.loading = false; }
   }
 
+  // Busca com debounce
   let searchTimer;
   searchInput.addEventListener('input', () => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { state.search = searchInput.value.trim(); state.group = null; foldersWrap.replaceChildren(); loadItems(true); }, 350);
+    searchTimer = setTimeout(() => {
+      state.search = searchInput.value.trim();
+      state.group = null;
+      foldersWrap.replaceChildren();
+      loadItems(true);
+    }, 350);
   });
 
   await loadItems(true);
 }
 
-// ------------------------------------------------------------------ Catálogo geral
+// ------------------------------------------------------------------ Catálogo geral (live / filmes / séries)
 export async function browsePage(root, ctx, type) {
   if (type === 'live') return livePage(root, ctx);
   return vodPage(root, ctx, type);
@@ -623,7 +591,7 @@ export async function favsPage(root, ctx) {
     if (!list.length) continue;
     const s = h('div', { class: 'grid' + (t === 'live' ? ' live' : '') });
     list.forEach((it, i) => s.append(card(it, t === 'live' ? () => ctx.play({ items: list, index: i }) : ctx.open, {
-      onMenu: async (x) => { try { await toggleFav(x); favsPage(root, ctx); } catch { } },
+      onMenu: async (x) => { try { await toggleFav(x); favsPage(root, ctx); } catch { /* ignora */ } },
     })));
     frag.append(h('section', { class: 'row' }, h('h2', {}, names[t]), s));
   }
@@ -637,15 +605,19 @@ export async function gamesPage(root, ctx) {
   root.replaceChildren(spinner());
 
   function getLocalDateStr(d = new Date()) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   }
 
+  // Data selecionada (começa na data local do usuário)
   const todayStr = getLocalDateStr();
-  let currentSelection = todayStr;
+  let currentSelection = todayStr; // pode ser YYYY-MM-DD, 'all' ou 'live'
 
   const navBar = h('div', { class: 'games-filter-bar', style: 'display:flex;gap:8px;margin-bottom:18px;align-items:center;flex-wrap:wrap' });
   const container = h('div', {});
-  root.replaceChildren(h('div', {}, navBar, container));
+  const wrap = h('div', {}, navBar, container);
 
   async function loadData(target) {
     currentSelection = target;
@@ -662,24 +634,37 @@ export async function gamesPage(root, ctx) {
         const r = await api(`/games?date=${target}`);
         renderContent(r, 'single');
       }
-    } catch (e) { container.replaceChildren(message(errText(e))); }
+    } catch (e) {
+      container.replaceChildren(message(errText(e)));
+    }
   }
 
   function updateButtonStyles() {
     navBar.querySelectorAll('button').forEach((b) => {
-      b.classList.toggle('primary', b.getAttribute('data-target') === currentSelection);
+      const mode = b.getAttribute('data-target');
+      if (mode === currentSelection) b.classList.add('primary');
+      else b.classList.remove('primary');
     });
   }
 
   function buildFilterButtons() {
     navBar.replaceChildren();
     const today = new Date();
+
     const buttons = [
       { label: '⚽ Hoje', target: todayStr },
       { label: '🔴 Ao Vivo', target: 'live', isLiveBtn: true },
       { label: '🔥 Todos da Semana', target: 'all' },
     ];
-    const offsets = [{ off: 1, label: 'Amanhã' }, { off: -1, label: 'Ontem' }, { off: 2 }, { off: 3 }];
+
+    // Ontem, Amanhã, +2, +3
+    const offsets = [
+      { off: 1, label: 'Amanhã' },
+      { off: -1, label: 'Ontem' },
+      { off: 2 },
+      { off: 3 },
+    ];
+
     for (const o of offsets) {
       const d = new Date(today);
       d.setDate(today.getDate() + o.off);
@@ -687,18 +672,22 @@ export async function gamesPage(root, ctx) {
       const lbl = o.label || d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
       buttons.push({ label: lbl, target: iso });
     }
+
     for (const b of buttons) {
-      navBar.append(h('button', {
+      const btn = h('button', {
         class: 'btn' + (b.target === currentSelection ? ' primary' : '') + (b.isLiveBtn ? ' badge-live' : ''),
-        'data-target': b.target, 'data-f': true,
+        'data-target': b.target,
+        'data-f': true,
         onclick: () => loadData(b.target),
-      }, b.label));
+      }, b.label);
+      navBar.append(btn);
     }
   }
 
   function renderContent(r, mode) {
     let list = r.games || [];
     let titleText = '';
+
     if (mode === 'live') {
       list = list.filter((g) => g.isLive);
       titleText = `🔴 Jogos em Andamento (${list.length})`;
@@ -708,10 +697,12 @@ export async function gamesPage(root, ctx) {
       const [y, m, d] = (r.date || todayStr).split('-');
       titleText = `⚽ Jogos · ${d}/${m}/${y} (${list.length})`;
     }
+
     const title = h('div', { class: 'sec', style: 'padding-top:4px;display:flex;align-items:center;justify-content:space-between' },
       h('h2', {}, titleText),
       h('button', { class: 'btn sm', 'data-f': true, onclick: () => loadData(currentSelection) }, '↻ Atualizar placares')
     );
+
     if (!list.length) {
       const emptyMsg = mode === 'live'
         ? 'Nenhum jogo ao vivo no momento. Clique em "⚽ Hoje" ou "🔥 Todos da Semana" para ver os jogos agendados!'
@@ -724,6 +715,7 @@ export async function gamesPage(root, ctx) {
     focusFirst(container);
   }
 
+  root.replaceChildren(wrap);
   buildFilterButtons();
   await loadData(currentSelection);
 }
@@ -765,75 +757,57 @@ export function searchPage(root, ctx) {
 export async function detailPage(root, ctx, base) {
   root.replaceChildren(spinner());
   let full;
-  try {
-    full = base.type === 'series'
-      ? await api('/series/' + encodeURIComponent(base.id))
-      : await api('/item/' + encodeURIComponent(base.id));
-  } catch (e) {
-    return root.replaceChildren(message(e instanceof ApiError && e.status === 404
-      ? 'Item não encontrado (a lista pode ter mudado).'
-      : errText(e)));
-  }
+  try { full = base.type === 'series' ? await api('/series/' + encodeURIComponent(base.id)) : await api('/item/' + encodeURIComponent(base.id)); }
+  catch (e) { return root.replaceChildren(message(e instanceof ApiError && e.status === 404 ? 'Item não encontrado (a lista pode ter mudado).' : errText(e))); }
 
   const detailBox = h('div', { class: 'detail', style: 'position:relative;overflow:hidden;border-radius:var(--radius);padding:24px;background:var(--card);transition:background-image 0.4s ease' });
   const poster = h('div', { class: 'poster' });
   artImage(full, poster);
-
   const synopsisTitle = h('h3', { style: 'margin-top:16px;margin-bottom:6px;font-size:1.05rem;color:var(--accent);font-weight:800' }, '📖 Sinopse / Detalhes');
-  const synopsis = h('p', { style: 'font-size:.95rem;line-height:1.6;color:var(--txt);max-width:850px' }, '⌛ Carregando sinopse e detalhes…');
+  const synopsis = h('p', { style: 'font-size:.95rem;line-height:1.6;color:var(--txt);max-width:850px' }, 'Carregando sinopse e detalhes…');
   const src = h('div', { class: 'src', style: 'margin-top:8px;font-size:.8rem;color:var(--dim)' });
-  const tags = h('div', { class: 'tags' },
-    [full.type === 'series' ? 'Série' : 'Filme', full.year, full.group,
-    full.type === 'series' ? `${full.episodeCount} episódios` : null]
-      .filter(Boolean).map((t) => h('span', {}, t))
-  );
-  const favBtn = h('button', {
-    class: 'btn', 'data-f': true,
-    onclick: async () => { try { await toggleFav(full); favBtn.textContent = full.favorite ? '✓ Na minha lista' : '＋ Minha lista'; } catch { toast('Não foi possível favoritar'); } }
-  }, full.favorite ? '✓ Na minha lista' : '＋ Minha lista');
-
+  const tags = h('div', { class: 'tags' }, [full.type === 'series' ? 'Série' : 'Filme', full.year, full.group, full.type === 'series' ? `${full.episodeCount} episódios` : null].filter(Boolean).map((t) => h('span', {}, t)));
+  const favBtn = h('button', { class: 'btn', 'data-f': true, onclick: async () => { try { await toggleFav(full); favBtn.textContent = full.favorite ? '✓ Na minha lista' : '＋ Minha lista'; } catch { toast('Não foi possível favoritar'); } } }, full.favorite ? '✓ Na minha lista' : '＋ Minha lista');
   const btns = h('div', { class: 'btns', style: 'margin:14px 0' });
   const epsBox = h('div', { class: 'eps' });
 
   let playBtn;
   if (full.type === 'movie') {
     const resume = full.positionMs > 10000 && full.durationMs > 0 && full.positionMs / full.durationMs < 0.95;
-    playBtn = h('button', {
-      class: 'btn primary', 'data-f': true,
-      onclick: () => ctx.play({ items: [full], index: 0 })  // direct play, no detail re-render
-    }, resume ? '▶ Continuar' : '▶ Assistir');
+    playBtn = h('button', { class: 'btn primary', 'data-f': true, onclick: () => ctx.play({ items: [full], index: 0 }) }, resume ? '▶ Continuar' : '▶ Assistir');
   }
   btns.append(...[playBtn, favBtn, h('button', { class: 'btn', 'data-f': true, onclick: ctx.back }, '← Voltar')].filter(Boolean));
 
   detailBox.append(poster, h('div', { class: 'info' }, h('h1', {}, full.title), tags, btns, synopsisTitle, synopsis, src));
   root.replaceChildren(detailBox, epsBox);
 
-  // Fetch meta – handle bad / missing synopsis gracefully
   api('/meta?id=' + encodeURIComponent(full.id)).then((m) => {
-    if (!m) {
-      synopsis.textContent = defaultSynopsis(full);
-      return;
-    }
-    const syn = cleanSynopsis(m.overview);
-    synopsis.textContent = syn || defaultSynopsis(full);
+    if (m) {
+      if (m.overview) synopsis.textContent = m.overview;
+      else { synopsis.textContent = 'Este título ainda não tem sinopse cadastrada.'; synopsis.style.opacity = '.6'; }
 
-    if (m.rating) {
-      tags.prepend(h('span', { style: 'background:#f59e0b;color:#000;font-weight:800;border-radius:4px;padding:2px 8px;font-size:.82rem' }, `★ ${m.rating}`));
+      if (m.rating) {
+        tags.prepend(h('span', { style: 'background:#f59e0b;color:#000;font-weight:800;border-radius:4px;padding:2px 8px;font-size:.82rem' }, `★ ${m.rating}`));
+      }
+      if (m.genres) {
+        tags.append(h('span', { style: 'color:var(--txt);font-weight:600' }, m.genres));
+      }
+      if (m.backdrop) {
+        detailBox.style.backgroundImage = `linear-gradient(to right, rgba(11,9,20,0.95) 0%, rgba(11,9,20,0.85) 45%, rgba(11,9,20,0.4) 100%), url(${m.backdrop})`;
+        detailBox.style.backgroundSize = 'cover';
+        detailBox.style.backgroundPosition = 'center';
+      }
+      if (m.poster) {
+        const hiImg = new Image();
+        hiImg.src = m.poster;
+        hiImg.onload = () => {
+          poster.replaceChildren(h('img', { src: m.poster, alt: '', style: 'width:100%;height:100%;object-fit:cover;border-radius:8px' }));
+        };
+      }
+      src.textContent = (m.source ? 'Fonte: ' + (m.source === 'TMDB' ? 'TMDB' : 'seu servidor') : '') + (m.cast ? ` · Elenco: ${m.cast}` : '') + (m.rating ? ` · Nota ${m.rating}/10` : '') + (m.year ? ` · Ano ${m.year}` : '');
     }
-    if (m.genres) tags.append(h('span', { style: 'color:var(--txt);font-weight:600' }, m.genres));
-    if (m.backdrop) {
-      detailBox.style.backgroundImage = `linear-gradient(to right, rgba(11,9,20,0.95) 0%, rgba(11,9,20,0.85) 45%, rgba(11,9,20,0.4) 100%), url(${m.backdrop})`;
-      detailBox.style.backgroundSize = 'cover';
-      detailBox.style.backgroundPosition = 'center';
-    }
-    if (m.poster) {
-      const hiImg = new Image();
-      hiImg.src = m.poster;
-      hiImg.onload = () => { poster.replaceChildren(h('img', { src: m.poster, alt: '', style: 'width:100%;height:100%;object-fit:cover;border-radius:8px' })); };
-    }
-    src.textContent = 'Metadados: TMDB' + (m.rating ? ` · Nota ${m.rating}/10` : '') + (m.year ? ` · Ano ${m.year}` : '');
   }).catch(() => {
-    synopsis.textContent = defaultSynopsis(full);
+    synopsis.textContent = 'Sinopse não encontrada.';
   });
 
   if (full.type === 'series') {
@@ -845,43 +819,52 @@ export async function detailPage(root, ctx, base) {
     const nextEp = inProg || (lastDone ? all[all.indexOf(lastDone) + 1] : null) || all[0];
     if (nextEp) {
       const label = `${inProg ? '▶ Continuar' : lastDone ? '▶ Próximo' : '▶ Assistir'} T${nextEp.season}E${nextEp.episode}`;
-      btns.prepend(h('button', {
-        class: 'btn primary', 'data-f': true,
-        onclick: () => ctx.play({ items: all, index: all.indexOf(nextEp), heading: full.title })
-      }, label));
+      btns.prepend(h('button', { class: 'btn primary', 'data-f': true, onclick: () => ctx.play({ items: all, index: all.indexOf(nextEp), heading: full.title }) }, label));
     }
     let cur = nextEp ? nextEp.season : seasons[0]?.season;
     const chips = h('div', { class: 'chips', style: 'padding-left:0' });
     const list = h('div', {});
     const draw = () => {
-      chips.replaceChildren(...seasons.map((s) =>
-        h('button', {
-          class: 'chip' + (s.season === cur ? ' on' : ''), 'data-f': true,
-          onclick: () => { cur = s.season; draw(); }
-        }, seasons.length === 1 && s.season === 0 ? 'Episódios' : `Temporada ${s.season}`)
-      ));
+      chips.replaceChildren(...seasons.map((s) => h('button', { class: 'chip' + (s.season === cur ? ' on' : ''), 'data-f': true, onclick: () => { cur = s.season; draw(); } }, seasons.length === 1 && s.season === 0 ? 'Episódios' : `Temporada ${s.season}`)));
       const s = seasons.find((x) => x.season === cur);
-      list.replaceChildren(...(s ? s.episodes : []).map((ep) =>
-        h('button', {
-          class: 'ep', 'data-f': true,
-          onclick: () => ctx.play({ items: all, index: all.indexOf(ep), heading: `${full.title} · T${ep.season}E${ep.episode}` })
-        },
-          h('span', { class: 'n' }, ep.episode),
-          h('span', { class: 't' }, ep.title),
-          ep.durationMs > 0 && ep.positionMs > 0
-            ? h('span', { class: 'pg' }, h('i', { style: `width:${Math.min(100, ep.positionMs / ep.durationMs * 100)}%` }))
-            : null
-        )
-      ));
+      list.replaceChildren(...(s ? s.episodes : []).map((ep) => h('button', { class: 'ep', 'data-f': true, onclick: () => ctx.play({ items: all, index: all.indexOf(ep), heading: `${full.title} · T${ep.season}E${ep.episode}` }) },
+        h('span', { class: 'n' }, ep.episode), h('span', { class: 't' }, ep.title),
+        ep.durationMs > 0 && ep.positionMs > 0 ? h('span', { class: 'pg' }, h('i', { style: `width:${Math.min(100, ep.positionMs / ep.durationMs * 100)}%` })) : null)));
     };
     draw();
     epsBox.append(chips, list);
   }
-
   (btns.querySelector('[data-f]') || root).focus?.({ preventScroll: true });
 }
 
 // ------------------------------------------------------------------ Conta
+// Servidor IPTV único: trocar aqui muda para todos os aparelhos, aplicativos e o site (pede a senha).
+function serverCard() {
+  const hostIn = h('input', { type: 'text', placeholder: 'http://servidor.com:80', style: 'width:100%;margin:6px 0', autocomplete: 'off', spellcheck: 'false' });
+  const passIn = h('input', { type: 'password', placeholder: 'Senha para alterar', style: 'width:100%;margin:6px 0', autocomplete: 'off' });
+  const msg = h('div', { class: 'muted', style: 'min-height:20px;font-size:13px' }, '');
+  api('/server').then((s) => { hostIn.value = s.host || ''; msg.textContent = s.rev ? `Última troca: ${new Date(s.updatedAt).toLocaleString('pt-BR')}` : ''; }).catch(() => {});
+  const save = async (force) => {
+    msg.textContent = 'Salvando…';
+    try {
+      const r = await api('/server', { method: 'POST', body: { password: passIn.value, host: hostIn.value, force } });
+      passIn.value = '';
+      msg.textContent = `Pronto! Servidor trocado para todos (${r.migrated} aparelho(s) atualizado(s)).`;
+      toast('Servidor atualizado para todos');
+    } catch (er) {
+      const m = (er.body && er.body.message) || 'Não foi possível salvar.';
+      if (er.code === 'unreachable' && confirm(m + '\n\nSalvar mesmo assim?')) return save(true);
+      msg.textContent = m;
+    }
+  };
+  return h('div', { style: 'margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,.12)' },
+    h('h3', { style: 'margin:0 0 4px' }, 'Servidor IPTV'),
+    h('div', { class: 'muted', style: 'font-size:13px' }, 'Vale para todos os aparelhos, aplicativos e o site.'),
+    hostIn, passIn,
+    h('button', { class: 'btn', 'data-f': true, onclick: () => save(false) }, 'Salvar para todos'),
+    msg);
+}
+
 export async function accountPage(root, ctx, info) {
   const loggedUser = localStorage.getItem('iptv.logged_user') || info.name || 'Conectado';
   const stat = { active: 'Ativo', pending: 'Aguardando lista', expired: 'Expirado', blocked: 'Bloqueado' }[info.status] || info.status || 'Ativo';
@@ -890,17 +873,22 @@ export async function accountPage(root, ctx, info) {
     h('dl', { class: 'kv' },
       h('dt', {}, 'Usuário'), h('dd', { class: 'mono' }, loggedUser),
       h('dt', {}, 'Status'), h('dd', {}, stat)),
+    serverCard(),
     h('div', { class: 'btns', style: 'margin-top:20px' },
       h('button', {
         class: 'btn', 'data-f': true, onclick: async (e) => {
           e.currentTarget.disabled = true;
           try { await api('/refresh', { method: 'POST', body: {} }); toast('Lista atualizada com sucesso'); ctx.go('home'); }
-          catch { toast('Lista atualizada!'); }
+          catch (er) { toast('Lista atualizada!'); }
           finally { e.currentTarget.disabled = false; }
         }
       }, '↻ Atualizar lista'),
       h('button', {
-        class: 'btn primary', 'data-f': true, onclick: () => { if (confirm('Deseja sair e trocar de usuário?')) logout(); }
+        class: 'btn primary', 'data-f': true, onclick: () => {
+          if (confirm('Deseja sair e trocar de usuário?')) {
+            logout();
+          }
+        }
       }, 'Sair da conta'))));
   focusFirst(root);
 }

@@ -17,13 +17,26 @@ const section = (t) => console.log('\n' + t);
 
 // ---------------------------------------------------------------- mídia de teste
 const media = fs.mkdtempSync(path.join(os.tmpdir(), 'iptv-media-'));
+let hasFfmpeg = false;
+try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); hasFfmpeg = true; } catch {}
 const ff = (...a) => execFileSync('ffmpeg', ['-v', 'error', '-y', ...a], { stdio: 'pipe' });
 const src = ['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=25:duration=6', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6'];
 const enc = ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-g', '25', '-c:a', 'aac'];
-ff(...src, ...enc, '-movflags', '+faststart', path.join(media, 'movie.mp4'));
-fs.mkdirSync(path.join(media, 'hls'));
-ff(...src, ...enc, '-f', 'hls', '-hls_time', '2', '-hls_playlist_type', 'vod', '-hls_segment_filename', path.join(media, 'hls', 'seg%d.ts'), path.join(media, 'hls', 'index.m3u8'));
-ff(...src, ...enc, '-f', 'mpegts', path.join(media, 'live.ts'));
+fs.mkdirSync(path.join(media, 'hls'), { recursive: true });
+if (hasFfmpeg) {
+  ff(...src, ...enc, '-movflags', '+faststart', path.join(media, 'movie.mp4'));
+  ff(...src, ...enc, '-f', 'hls', '-hls_time', '2', '-hls_playlist_type', 'vod', '-hls_segment_filename', path.join(media, 'hls', 'seg%d.ts'), path.join(media, 'hls', 'index.m3u8'));
+  ff(...src, ...enc, '-f', 'mpegts', path.join(media, 'live.ts'));
+} else {
+  const ftyp = Buffer.from('000000206674797069736f6d0000020069736f6d69736f32617663316d703431', 'hex');
+  fs.writeFileSync(path.join(media, 'movie.mp4'), Buffer.concat([ftyp, Buffer.alloc(1000)]));
+  const tsPkt = Buffer.alloc(188 * 5, 0x47);
+  fs.writeFileSync(path.join(media, 'live.ts'), tsPkt);
+  fs.writeFileSync(path.join(media, 'hls', 'seg0.ts'), tsPkt);
+  fs.writeFileSync(path.join(media, 'hls', 'seg1.ts'), tsPkt);
+  fs.writeFileSync(path.join(media, 'hls', 'seg2.ts'), tsPkt);
+  fs.writeFileSync(path.join(media, 'hls', 'index.m3u8'), '#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2.0,\nseg0.ts\n#EXTINF:2.0,\nseg1.ts\n#EXTINF:2.0,\nseg2.ts\n#EXT-X-ENDLIST\n');
+}
 fs.writeFileSync(path.join(media, 'hls', 'master.m3u8'), '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=320x180\nindex.m3u8\n');
 
 const hits = { ua: [], ranges: [] };

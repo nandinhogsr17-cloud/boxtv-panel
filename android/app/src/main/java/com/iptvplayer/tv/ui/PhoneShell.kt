@@ -3,9 +3,6 @@ package com.iptvplayer.tv.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -21,7 +18,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,7 +32,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,37 +42,41 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.iptvplayer.tv.IptvApp
 import com.iptvplayer.tv.data.Item
 import com.iptvplayer.tv.data.StatusResponse
 
-// ─── Tabs disponíveis no modo phone (5 principais) ─────────────────────────
-private val PHONE_TABS = listOf(
-    Tab.HOME,
-    Tab.LIVE,
-    Tab.MOVIES,
-    Tab.SERIES,
-    Tab.SEARCH,
-)
+// ─── Abas do celular: Início · Ao vivo · Filmes · Séries · Futebol ──────────
+private val PHONE_TABS = listOf(Tab.HOME, Tab.LIVE, Tab.MOVIES, Tab.SERIES, Tab.GAMES)
 
-// Ícones unicode para cada tab
-private fun tabIcon(tab: Tab, selected: Boolean): String = when (tab) {
-    Tab.HOME    -> if (selected) "🏠" else "🏡"
-    Tab.LIVE    -> if (selected) "📺" else "📡"
-    Tab.MOVIES  -> if (selected) "🎬" else "🎞"
-    Tab.SERIES  -> if (selected) "🍿" else "🎭"
-    Tab.SEARCH  -> if (selected) "🔍" else "🔎"
-    else        -> "●"
+private fun phoneLabel(tab: Tab): String = if (tab == Tab.GAMES) "Futebol" else tab.label
+
+private fun phoneIcon(tab: Tab): PhoneIcon = when (tab) {
+    Tab.HOME -> PhoneIcon.HOME
+    Tab.LIVE -> PhoneIcon.LIVE
+    Tab.MOVIES -> PhoneIcon.MOVIES
+    Tab.SERIES -> PhoneIcon.SERIES
+    Tab.GAMES -> PhoneIcon.SOCCER
+    Tab.SEARCH -> PhoneIcon.SEARCH
+    Tab.FAVS -> PhoneIcon.STAR
+    Tab.SETTINGS -> PhoneIcon.HOME
+}
+
+private fun phoneTitle(tab: Tab): String = when (tab) {
+    Tab.FAVS -> "Favoritos"
+    Tab.SETTINGS -> "Conta"
+    Tab.SEARCH -> "Buscar"
+    Tab.GAMES -> "Futebol"
+    else -> tab.label
 }
 
 // ─── Shell principal do celular ─────────────────────────────────────────────
@@ -93,10 +92,6 @@ fun MainShellPhone(onLogout: () -> Unit = {}) {
         value = try { app.api.status() } catch (_: Exception) { null }
     }
 
-    val userInfo = status?.name?.let { name ->
-        "$name" + (status?.expiresAt?.let { exp -> " · até " + fmtDate(exp) } ?: "")
-    }
-
     val startPlay: (PlayRequest) -> Unit = { req -> if (req.items.isNotEmpty()) play = req }
     val openItem: (Item) -> Unit = { item ->
         when (item.type) {
@@ -109,58 +104,46 @@ fun MainShellPhone(onLogout: () -> Unit = {}) {
 
     val overlayActive = detail != null || play != null
 
-    Box(Modifier.fillMaxSize().background(Bg)) {
-
-        // ── Conteúdo principal ──────────────────────────────────────────────
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Bg, Color(0xFF0B1B3C))))
+    ) {
         Column(
             Modifier
                 .fillMaxSize()
                 .alpha(if (overlayActive) 0f else 1f)
         ) {
-
-            // Cabeçalho elegante com gradiente
             PhoneHeader(
-                userInfo = userInfo,
+                title = if (tab == Tab.HOME) null else phoneTitle(tab),
+                userName = status?.name,
+                onSearch = { tab = Tab.SEARCH },
                 onFavorites = { tab = Tab.FAVS },
-                onGames = { tab = Tab.GAMES },
-                onSettings = { tab = Tab.SETTINGS },
+                onAccount = { tab = Tab.SETTINGS },
             )
 
-            // Área de conteúdo – ocupa todo o espaço restante
-            Box(
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-            ) {
+            Box(Modifier.weight(1f).fillMaxWidth()) {
                 AnimatedContent(
                     targetState = tab,
-                    transitionSpec = {
-                        fadeIn(tween(220)) togetherWith fadeOut(tween(180))
-                    },
-                    label = "phone_tab_content"
+                    transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(180)) },
+                    label = "phone_tab_content",
                 ) { currentTab ->
                     when (currentTab) {
-                        Tab.HOME    -> HomeScreen(refresh, openItem, startPlay) { tab = Tab.LIVE }
-                        Tab.LIVE    -> BrowseScreen("live", openItem, startPlay)
-                        Tab.MOVIES  -> BrowseScreen("movie", openItem, startPlay)
-                        Tab.SERIES  -> BrowseScreen("series", openItem, startPlay)
-                        Tab.FAVS    -> FavoritesScreen(refresh, openItem, startPlay)
-                        Tab.GAMES   -> GamesScreen(startPlay)
-                        Tab.SEARCH  -> SearchScreen(openItem, startPlay)
+                        Tab.HOME -> HomeScreen(refresh, openItem, startPlay, { tab = Tab.GAMES }, onSearch = { tab = Tab.SEARCH })
+                        Tab.LIVE -> BrowseScreen("live", openItem, startPlay)
+                        Tab.MOVIES -> BrowseScreen("movie", openItem, startPlay)
+                        Tab.SERIES -> BrowseScreen("series", openItem, startPlay)
+                        Tab.FAVS -> FavoritesScreen(refresh, openItem, startPlay)
+                        Tab.GAMES -> GamesScreen(startPlay)
+                        Tab.SEARCH -> SearchScreen(openItem, startPlay)
                         Tab.SETTINGS -> SettingsScreen(onLogout)
                     }
                 }
             }
 
-            // ── Barra de navegação inferior bonita ──────────────────────────
-            PhoneNavBar(
-                selected = tab,
-                onSelect = { tab = it },
-                visible = !overlayActive,
-            )
+            PhoneNavBar(selected = tab, onSelect = { tab = it }, visible = !overlayActive)
         }
 
-        // ── Overlay de detalhe ──────────────────────────────────────────────
         AnimatedVisibility(
             visible = detail != null && play == null,
             enter = slideInVertically(initialOffsetY = { it / 3 }) + fadeIn(tween(300)),
@@ -176,7 +159,6 @@ fun MainShellPhone(onLogout: () -> Unit = {}) {
             }
         }
 
-        // ── Overlay do player ───────────────────────────────────────────────
         AnimatedVisibility(
             visible = play != null,
             enter = scaleIn(initialScale = 0.92f) + fadeIn(tween(250)),
@@ -189,206 +171,122 @@ fun MainShellPhone(onLogout: () -> Unit = {}) {
     }
 }
 
-// ─── Cabeçalho do Phone ─────────────────────────────────────────────────────
+// ─── Cabeçalho: marca/título à esquerda; busca, favoritos e conta à direita ─
 @Composable
 private fun PhoneHeader(
-    userInfo: String?,
+    title: String?,
+    userName: String?,
+    onSearch: () -> Unit,
     onFavorites: () -> Unit,
-    onGames: () -> Unit,
-    onSettings: () -> Unit,
+    onAccount: () -> Unit,
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(colors = listOf(Color(0xFF111827), Bg)))
             .statusBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(Brush.horizontalGradient(listOf(Color(0xFF151D2D), Surface1, Color(0xFF11232B))))
-                .border(1.dp, Brush.horizontalGradient(listOf(AccentAlt.copy(alpha = 0.5f), Color.White.copy(alpha = 0.08f), Accent.copy(alpha = 0.42f))), RoundedCornerShape(18.dp))
-                .padding(horizontal = 7.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        if (title == null) {
             Box(
-                modifier = Modifier.size(32.dp).clip(RoundedCornerShape(11.dp))
+                Modifier.size(34.dp).clip(RoundedCornerShape(11.dp))
                     .background(Brush.linearGradient(listOf(AccentAlt, Accent))),
                 contentAlignment = Alignment.Center,
-            ) { Text("▶", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Black) }
-            Column(Modifier.width(58.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text("Box", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp)
-                    Text("Tv", color = Accent, fontSize = 19.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp)
-                }
-                Text("CINEMA  •  AO VIVO", color = TextSecondary, fontSize = 7.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp, maxLines = 1)
+            ) { Text("▶", color = OnAccent, fontSize = 14.sp, fontWeight = FontWeight.Black) }
+            Spacer(Modifier.width(10.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text("Box", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp)
+                Text("Tv", color = Accent, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp)
             }
-            Spacer(Modifier.weight(1f))
-            CastRouteButton()
-            PhoneHeaderAction("★", "Favoritos", onFavorites)
-            PhoneHeaderAction("⚽", "Jogos", onGames)
-            PhoneHeaderAction("⚙", userInfo?.let { "Conta de $it" } ?: "Conta", onSettings)
+        } else {
+            Text(title, color = TextPrimary, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
+        }
+        Spacer(Modifier.weight(1f))
+        HeaderIcon(PhoneIcon.SEARCH, "Buscar", onSearch)
+        Spacer(Modifier.width(6.dp))
+        HeaderIcon(PhoneIcon.STAR, "Favoritos", onFavorites)
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(Surface2, Surface1)))
+                .border(2.dp, Accent.copy(alpha = 0.7f), CircleShape)
+                .semantics { contentDescription = userName?.let { "Conta de $it" } ?: "Conta" }
+                .clickable(onClick = onAccount),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                (userName?.trim()?.firstOrNull()?.uppercase() ?: "B"),
+                color = Accent,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+            )
         }
     }
 }
 
 @Composable
-private fun PhoneHeaderAction(icon: String, description: String, onClick: () -> Unit) {
+private fun HeaderIcon(icon: PhoneIcon, description: String, onClick: () -> Unit) {
     Box(
-        modifier = Modifier
-            .size(36.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Surface1)
+        Modifier
+            .size(44.dp)
+            .clip(CircleShape)
             .semantics { contentDescription = description }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) {
-        Text(icon, color = Accent, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-    }
+    ) { PhoneIconView(icon, Color.White, size = 26.dp) }
 }
 
-// ─── Barra de navegação inferior ────────────────────────────────────────────
+// ─── Barra inferior ─────────────────────────────────────────────────────────
 @Composable
-private fun PhoneNavBar(
-    selected: Tab,
-    onSelect: (Tab) -> Unit,
-    visible: Boolean,
-) {
+private fun PhoneNavBar(selected: Tab, onSelect: (Tab) -> Unit, visible: Boolean) {
     AnimatedVisibility(
         visible = visible,
         enter = slideInVertically(initialOffsetY = { it }) + fadeIn(tween(300)),
         exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(tween(200)),
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color(0x00000000), Color(0xFF0D0D16)),
-                    )
-                )
+                .background(Color(0xFF080F20))
+                .border(1.dp, Color.White.copy(alpha = 0.06f))
+                .navigationBarsPadding()
+                .padding(horizontal = 6.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        color = Color(0xFF0D0D16),
-                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                    )
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.horizontalGradient(
-                            listOf(
-                                Accent.copy(alpha = 0.42f),
-                                AccentAlt.copy(alpha = 0.28f),
-                                Accent.copy(alpha = 0.42f),
-                            )
-                        ),
-                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                    )
-                    .navigationBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-            ) {
-                PHONE_TABS.forEach { tabItem ->
-                    PhoneNavItem(
-                        tab = tabItem,
-                        selected = tabItem == selected,
-                        onClick = { onSelect(tabItem) },
-                    )
-                }
+            PHONE_TABS.forEach { t ->
+                PhoneNavItem(t, selected = t == selected, onClick = { onSelect(t) })
             }
         }
     }
 }
 
-// ─── Item individual da barra inferior ──────────────────────────────────────
 @Composable
-private fun PhoneNavItem(
-    tab: Tab,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1.18f else 1f,
-        animationSpec = tween(220, easing = FastOutSlowInEasing),
-        label = "icon_scale",
-    )
-    val labelAlpha by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.5f,
-        animationSpec = tween(220),
-        label = "label_alpha",
-    )
-    val dotSize by animateDpAsState(
-        targetValue = if (selected) 5.dp else 0.dp,
-        animationSpec = tween(220, easing = FastOutSlowInEasing),
-        label = "dot_size",
-    )
-
-    Box(
+private fun PhoneNavItem(tab: Tab, selected: Boolean, onClick: () -> Unit) {
+    val tint = if (selected) Accent else TextSecondary
+    Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(22.dp))
+            .then(if (selected) Modifier.background(Accent.copy(alpha = 0.16f)) else Modifier)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
             )
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
+            .padding(horizontal = if (selected) 18.dp else 12.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            // Ícone com glow quando selecionado
-            Box(contentAlignment = Alignment.Center) {
-                if (selected) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .background(
-                                Brush.radialGradient(
-                                    listOf(
-                                        Accent.copy(alpha = 0.25f),
-                                        Color.Transparent,
-                                    )
-                                ),
-                                shape = CircleShape,
-                            )
-                    )
-                }
-                Text(
-                    text = tabIcon(tab, selected),
-                    fontSize = 22.sp,
-                    modifier = Modifier.scale(iconScale),
-                )
-            }
-
-            Spacer(Modifier.height(3.dp))
-
-            // Label
-            Text(
-                text = tab.label,
-                color = if (selected) Accent else TextSecondary,
-                fontSize = 10.sp,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.alpha(labelAlpha),
-            )
-
-            // Ponto indicador
-            Spacer(Modifier.height(3.dp))
-            Box(
-                modifier = Modifier
-                    .size(dotSize)
-                    .background(
-                        Brush.radialGradient(listOf(Accent, AccentAlt)),
-                        shape = CircleShape,
-                    )
-            )
-        }
+        PhoneIconView(phoneIcon(tab), tint, size = 28.dp)
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = phoneLabel(tab),
+            color = tint,
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
     }
 }

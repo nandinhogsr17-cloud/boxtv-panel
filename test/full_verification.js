@@ -65,7 +65,7 @@ async function testSuite() {
     loginData = await res.json();
     if (loginData.status !== 'active') throw new Error(`Status ${loginData.status}`);
     const expYear = new Date(loginData.expiresAt).getFullYear();
-    return `Login ativo! Vencimento: ${expYear} | M3U: ${loginData.m3u_url}`;
+    return `Login ativo! Vencimento: ${expYear} `;
   });
 
   // 4. Verificação de Status (/api/v1/status)

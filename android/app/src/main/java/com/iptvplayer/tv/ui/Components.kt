@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -61,6 +63,9 @@ import com.iptvplayer.tv.data.Item
  * Base de tudo que recebe foco do controle remoto: destaca com borda e cresce um pouco.
  * (Feito só com o foundation do Compose para não depender de APIs específicas de TV.)
  */
+private val FocusBorderBrush = Brush.linearGradient(listOf(AccentAlt, Accent, Gold))
+private val NoBorderBrush = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
+
 @Composable
 fun FocusCard(
     onClick: () -> Unit,
@@ -71,7 +76,7 @@ fun FocusCard(
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) focusedScale else 1f, label = "focusScale")
+    val scale by animateFloatAsState(if (focused) focusedScale else 1f, animationSpec = androidx.compose.animation.core.tween(110), label = "focusScale")
     Box(
         modifier
             .zIndex(if (focused) 1f else 0f)
@@ -83,7 +88,7 @@ fun FocusCard(
                 focused = state.isFocused
                 if (state.isFocused) onFocused?.invoke()
             }
-            .border(if (focused) 2.5.dp else 0.dp, if (focused) Brush.linearGradient(listOf(AccentAlt, Accent, Gold)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)), shape)
+            .border(if (focused) 2.5.dp else 0.dp, if (focused) FocusBorderBrush else NoBorderBrush, shape)
             .clip(shape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -146,19 +151,21 @@ fun ActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     primary: Boolean = false,
+    fillWidth: Boolean = false,
 ) {
     FocusCard(onClick, modifier, shape = RoundedCornerShape(13.dp), focusedScale = 1.045f) { focused ->
         Box(
             Modifier
+                .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
                 .background(
-                    if (focused || primary) Brush.linearGradient(listOf(AccentAlt, Accent, Color(0xFF713BFF)))
+                    if (focused || primary) Brush.linearGradient(listOf(AccentAlt, Accent, if (UiMode.gold) Accent else Color(0xFF713BFF)))
                     else Brush.linearGradient(listOf(Surface2, Surface1))
                 )
                 .border(1.dp, if (focused || primary) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.07f), RoundedCornerShape(13.dp))
                 .padding(horizontal = 20.dp, vertical = 11.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(text, color = if (focused || primary) OnAccent else Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
@@ -183,7 +190,7 @@ fun Pill(
                 .background(
                     when {
                         focused -> Brush.linearGradient(listOf(AccentAlt, Accent))
-                        selected -> Brush.linearGradient(listOf(Surface2, Color(0xFF252044)))
+                        selected -> Brush.linearGradient(listOf(Surface2, if (UiMode.gold) Surface2 else Color(0xFF252044)))
                         else -> Brush.linearGradient(listOf(Surface1, Surface1))
                     }
                 )
@@ -193,7 +200,7 @@ fun Pill(
         ) {
             Text(
                 text,
-                color = if (focused || selected) Color.White else TextSecondary,
+                color = if (focused) OnAccent else if (selected) Color.White else TextSecondary,
                 fontSize = 14.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1,
@@ -208,7 +215,8 @@ fun PosterBackground(item: Item, fit: Boolean, modifier: Modifier = Modifier) {
     val url = item.posterUrl
     val context = LocalContext.current
     val imageRequest = remember(url) {
-        url?.let { ImageRequest.Builder(context).data(it).crossfade(true).build() }
+        // Tamanho limitado: decodifica menos pixels (TV box com pouca memória rola mais liso).
+        url?.let { ImageRequest.Builder(context).data(it).size(if (fit) 320 else 360, if (fit) 192 else 540).crossfade(120).build() }
     }
     var loaded by remember(url) { mutableStateOf(false) }
     Box(
@@ -247,6 +255,8 @@ fun MediaCard(
     modifier: Modifier = Modifier,
     wide: Boolean = false,
     cardWidth: androidx.compose.ui.unit.Dp? = null,
+    fillWidth: Boolean = false,
+    onFocused: (() -> Unit)? = null,
 ) {
     val defaultWidth = when {
         item.isLive -> 150.dp
@@ -259,9 +269,23 @@ fun MediaCard(
         wide -> 130.dp
         else -> 187.dp
     }
-    Column(modifier.width(w)) {
-        FocusCard(onClick, Modifier.size(w, h)) {
+    Column(if (fillWidth) modifier.fillMaxWidth() else modifier.width(w)) {
+        FocusCard(onClick, if (fillWidth) Modifier.fillMaxWidth().aspectRatio(2f / 3f) else Modifier.size(w, h), onFocused = onFocused) {
             PosterBackground(item, fit = item.isLive)
+            val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+            if (UiMode.phone && !item.isLive && (item.year ?: 0) >= thisYear) {
+                Text(
+                    "NOVO",
+                    color = OnAccent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .background(Accent, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 9.dp, vertical = 4.dp),
+                )
+            }
             if (item.progress > 0f) {
                 Box(
                     Modifier
@@ -367,7 +391,7 @@ fun GameCard(game: Game, onClick: () -> Unit, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(4.dp))
             Text(
                 if (game.channels.isNotEmpty()) "📺 " + game.channels.first().title
-                else "Sem canal na sua lista",
+                else "Sem canal disponível",
                 fontSize = 12.sp,
                 color = TextSecondary,
                 maxLines = 1,
@@ -387,5 +411,44 @@ fun ProgressBar(fraction: Float, modifier: Modifier = Modifier) {
                 .fillMaxWidth(fraction.coerceIn(0f, 1f))
                 .background(Accent)
         )
+    }
+}
+
+
+/** Pincel de brilho que corre pelos blocos de carregamento. */
+@Composable
+fun shimmerBrush(): Brush {
+    val t = rememberInfiniteTransition(label = "shimmer")
+    val x by t.animateFloat(
+        initialValue = -400f, targetValue = 1400f,
+        animationSpec = infiniteRepeatable(tween(1300, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart),
+        label = "shimmerX",
+    )
+    return Brush.linearGradient(
+        listOf(Color(0xFF16213A), Color(0xFF25365E), Color(0xFF16213A)),
+        start = androidx.compose.ui.geometry.Offset(x, 0f),
+        end = androidx.compose.ui.geometry.Offset(x + 400f, 200f),
+    )
+}
+
+/** Esqueleto de capas enquanto o catálogo carrega: dá sensação de rapidez no lugar de um círculo girando. */
+@Composable
+fun PosterSkeleton(modifier: Modifier = Modifier, rows: Int = 2) {
+    val brush = shimmerBrush()
+    val perRow = if (UiMode.phone) 3 else 6
+    Column(modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        repeat(rows) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                repeat(perRow) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(brush),
+                    )
+                }
+            }
+        }
     }
 }

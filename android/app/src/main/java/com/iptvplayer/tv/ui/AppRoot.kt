@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -81,6 +82,7 @@ sealed interface Gate {
 @Composable
 fun AppRoot() {
     val isTv = rememberIsTv()
+    UiMode.phone = !isTv // layout de celular; a paleta dourada vale para os dois
     var gate by remember { mutableStateOf<Gate>(Gate.Loading) }
     val loadingStatus = "Conectando ao BoxTv..."
 
@@ -89,6 +91,7 @@ fun AppRoot() {
 
     LaunchedEffect(Unit) {
         // Sem código de ativação: a autenticação é a conta Xtream. Se já há login salvo, entra sozinho.
+        rootApp.api.setHideAdult(com.iptvplayer.tv.data.AdultLock.hidden(context))
         val started = System.currentTimeMillis()
         val (user, pass) = withContext(Dispatchers.IO) { DeviceIdentity.getAuth(context) }
         var ok = false
@@ -108,6 +111,8 @@ fun AppRoot() {
     }
 
     val logout: () -> Unit = {
+        com.iptvplayer.tv.data.AdultLock.unlocked = false
+        rootApp.api.setHideAdult(com.iptvplayer.tv.data.AdultLock.hidden(context))
         DeviceIdentity.clearAuth(context)
         gate = Gate.NotActive("login", null)
     }
@@ -124,6 +129,11 @@ fun AppRoot() {
         }
         is Gate.Ready -> if (isTv) MainShell(onLogout = logout) else MainShellPhone(onLogout = logout)
     }
+}
+
+/** Diagnóstico da TV: estado do carregamento do Início, mostrado em texto pequeno no canto. */
+object TvDiag {
+    var home by mutableStateOf("-")
 }
 
 @Composable
@@ -156,6 +166,41 @@ fun MainShell(onLogout: () -> Unit = {}) {
 
     BackHandler(enabled = tab != Tab.HOME && detail == null && play == null) { tab = Tab.HOME }
 
+    val ctx = LocalContext.current
+
+    // Servidor único: confere a cada 10 min se o servidor foi trocado no painel e, se foi, passa a usar o novo.
+    LaunchedEffect(Unit) {
+        delay(3000)
+        while (true) {
+            try {
+                val novo = app.api.syncServer(ctx)
+                if (novo != null) {
+                    refresh++
+                    android.widget.Toast.makeText(ctx, "Servidor atualizado", android.widget.Toast.LENGTH_LONG).show()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+            delay(10 * 60_000L)
+        }
+    }
+
+    // Opção "Abrir no último canal": ao entrar, retoma o canal ao vivo anterior com a lista da categoria para trocar com ▲ ▼
+    LaunchedEffect(Unit) {
+        try {
+            if (!com.iptvplayer.tv.data.AppPreferences.read(ctx).reopenLastChannel) return@LaunchedEffect
+            val id = com.iptvplayer.tv.data.LastChannel.id(ctx) ?: return@LaunchedEffect
+            val group = com.iptvplayer.tv.data.LastChannel.group(ctx)
+            val list = app.api.browse("live", group, null, 0, 3000).items
+            val idx = list.indexOfFirst { it.id == id }
+            if (idx >= 0 && play == null) play = PlayRequest(list, idx, group)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
+    }
+
     val overlayActive = detail != null || play != null
 
     val tabFocus = remember { FocusRequester() }
@@ -167,26 +212,48 @@ fun MainShell(onLogout: () -> Unit = {}) {
         } catch (_: Exception) {}
     }
 
+    var pendingTab by remember { mutableStateOf(tab) }
+    LaunchedEffect(tab) { pendingTab = tab }
+    LaunchedEffect(pendingTab) {
+        if (pendingTab != tab) {
+            delay(250)
+            tab = pendingTab
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
-        Column(
+        Row(
             Modifier
                 .fillMaxSize()
                 .alpha(if (overlayActive) 0f else 1f)
                 .focusProperties { canFocus = !overlayActive }
         ) {
-            TopTabs(tab, tabFocus, userInfo = userInfo) { tab = it }
-            Box(Modifier.weight(1f)) {
-                when (tab) {
-                    Tab.HOME -> HomeScreen(refresh, openItem, startPlay) { tab = Tab.GAMES }
-                    Tab.LIVE -> BrowseScreen("live", openItem, startPlay)
-                    Tab.MOVIES -> BrowseScreen("movie", openItem, startPlay)
-                    Tab.SERIES -> BrowseScreen("series", openItem, startPlay)
-                    Tab.FAVS -> FavoritesScreen(refresh, openItem, startPlay)
-                    Tab.GAMES -> GamesScreen(startPlay)
-                    Tab.SEARCH -> SearchScreen(openItem, startPlay)
-                    Tab.SETTINGS -> SettingsScreen(onLogout)
+            TvRail(tab, tabFocus, onSelect = { tab = it }, onFocusTab = { pendingTab = it })
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                TvTopBar(title = null, userInfo = userInfo)
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    when (tab) {
+                        Tab.HOME -> HomeScreen(refresh, openItem, startPlay) { tab = Tab.GAMES }
+                        Tab.LIVE -> BrowseScreen("live", openItem, startPlay)
+                        Tab.MOVIES -> BrowseScreen("movie", openItem, startPlay)
+                        Tab.SERIES -> BrowseScreen("series", openItem, startPlay)
+                        Tab.FAVS -> FavoritesScreen(refresh, openItem, startPlay)
+                        Tab.GAMES -> GamesScreen(startPlay)
+                        Tab.SEARCH -> SearchScreen(openItem, startPlay)
+                        Tab.SETTINGS -> SettingsScreen(onLogout)
+                    }
                 }
             }
+        }
+
+        run {
+            val info = LocalScreenInfo.current
+            Text(
+                "v24 ${info.deviceLabel} | ${tab.name} | ${info.widthDp.toInt()}x${info.heightDp.toInt()}dp x${"%.2f".format(info.factor)} | home=${TvDiag.home}",
+                color = Color.White.copy(alpha = 0.55f),
+                fontSize = 10.sp,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+            )
         }
 
         detail?.let { d ->
@@ -203,67 +270,3 @@ fun MainShell(onLogout: () -> Unit = {}) {
     }
 }
 
-@Composable
-fun TopTabs(
-    selected: Tab,
-    selectedFocus: FocusRequester,
-    userInfo: String?,
-    onSelect: (Tab) -> Unit,
-) {
-    var pending by remember { mutableStateOf(selected) }
-    LaunchedEffect(selected) { pending = selected }
-    LaunchedEffect(pending) {
-        if (pending != selected) {
-            delay(250)
-            onSelect(pending)
-        }
-    }
-    Column(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Color(0xFF101625), Bg, Color(0xFF101B22))))) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 11.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(end = 10.dp)) {
-                Box(
-                    Modifier.size(38.dp).clip(RoundedCornerShape(12.dp))
-                        .background(Brush.linearGradient(listOf(AccentAlt, Accent)))
-                        .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("▶", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Black)
-                }
-                Column {
-                    Text("BoxTv", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 19.sp)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Box(Modifier.size(5.dp).background(Accent, CircleShape))
-                        Text("TV  •  ESPORTES", color = TextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
-                    }
-                }
-            }
-            Box(Modifier.width(1.dp).height(30.dp).background(Brush.verticalGradient(listOf(Color.Transparent, Accent.copy(alpha = 0.7f), Color.Transparent))))
-            Spacer(Modifier.width(4.dp))
-            Tab.values().forEach { t ->
-                Pill(
-                    text = t.label,
-                    selected = t == selected,
-                    onClick = { onSelect(t) },
-                    modifier = if (t == selected) Modifier.focusRequester(selectedFocus) else Modifier,
-                    onFocused = { pending = t },
-                )
-            }
-            if (!userInfo.isNullOrBlank()) {
-                Spacer(Modifier.weight(1f))
-                Row(
-                    Modifier.clip(RoundedCornerShape(50)).background(Color(0x66111A28)).padding(horizontal = 13.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.size(7.dp).background(Accent, CircleShape))
-                    Spacer(Modifier.width(8.dp))
-                    Text(userInfo, color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                }
-            }
-        }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, AccentAlt.copy(alpha = 0.55f), Accent.copy(alpha = 0.45f), Color.Transparent))))
-    }
-}

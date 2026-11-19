@@ -1,3 +1,5 @@
+import { sealRecovery, openRecovery } from './src/recovery.js';
+import { Snapshotter } from './src/snapshot.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Store, deviceStatus, macToCode, normCode } from './src/db.js';
 import { CatalogStore } from './src/catalog.js';
 import { pub } from './src/m3u.js';
+import { createMsx } from './src/msx.js';
 import { GamesService, matchChannels } from './src/games.js';
 import { MetaService } from './src/meta.js';
 import { EpgService } from './src/epg.js';
@@ -42,8 +45,7 @@ import {
   sendJson,
   readJson,
   parseBasic,
-  isHttpUrl,
-} from './src/util.js';
+  isHttpUrl, isAdultGroup } from './src/util.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DAY_MS = 24 * 3600 * 1000;
@@ -55,9 +57,11 @@ export function createApp(options = {}) {
     dataDir: options.dataDir ?? env.DATA_DIR ?? path.join(__dirname, 'data'),
     adminUser: options.adminUser ?? env.ADMIN_USER ?? 'admin',
     adminPassword: options.adminPassword ?? env.ADMIN_PASSWORD ?? '',
+    // senha para trocar o servidor IPTV de todos os aparelhos (app, TV e site). Troque no Render com SERVER_EDIT_PASSWORD.
+    serverEditPassword: options.serverEditPassword ?? env.SERVER_EDIT_PASSWORD ?? 'box54321',
     footballToken: options.footballToken ?? env.FOOTBALL_DATA_TOKEN ?? '',
     competitions: options.competitions ?? env.FOOTBALL_COMPETITIONS ?? '',
-    tmdbKey: options.tmdbKey ?? env.TMDB_KEY ?? 'f090bb54758cabf231fb605d3e3e0468',
+    tmdbKey: options.tmdbKey ?? env.TMDB_KEY ?? '',
     tz: options.tz ?? env.TZ_NAME ?? 'America/Sao_Paulo',
     ttlMin: Number(options.ttlMin ?? env.CATALOG_TTL_MIN ?? 360),
     trustProxy: (options.trustProxy ?? env.TRUST_PROXY) === '1' || options.trustProxy === true || (options.trustProxy === undefined && env.TRUST_PROXY === undefined && !!env.RENDER), // no Render liga sozinho
@@ -68,12 +72,16 @@ export function createApp(options = {}) {
     corsOrigin: options.corsOrigin ?? env.CORS_ORIGIN ?? '', // "*" ou lista separada por vírgula (só se o site ficar em outro domínio)
     allowPrivate: (options.allowPrivate ?? env.ALLOW_PRIVATE_STREAMS) === '1' || options.allowPrivate === true,
     streamUa: options.streamUa ?? env.STREAM_UA ?? 'VLC/3.0.20 LibVLC/3.0.20',
-    // Ativação feita pelo próprio cliente (site /ativar ou dentro do app)
+    // Ativação feita pelo próprio cliente (API legada; o app e o site não usam mais)
     selfActivate: (options.selfActivate ?? env.SELF_ACTIVATE ?? '1') !== '0' && options.selfActivate !== false,
     xtreamHost: options.xtreamHost ?? env.DEFAULT_XTREAM_HOST ?? 'http://trevorcdn.online:80', // servidor padrão BoxTv, editável pelo login/admin
     xtreamOutput: options.xtreamOutput ?? env.DEFAULT_XTREAM_OUTPUT ?? 'mpegts',
     activateMax: Number(options.activateMax ?? env.ACTIVATE_MAX ?? 15), // tentativas de ativação por IP a cada 10 min
     selfDays: Number(options.selfDays ?? env.SELF_DAYS ?? 0), // validade dada à ativação do cliente (0 = sem validade)
+    extraUrl: options.extraUrl ?? env.EXTRA_M3U_URL ?? '',
+    extraLabel: options.extraLabel ?? env.EXTRA_LABEL ?? 'Extras',
+    snapshotUrl: options.snapshotUrl ?? env.SNAPSHOT_URL ?? '',
+    snapshotToken: options.snapshotToken ?? env.SNAPSHOT_TOKEN ?? '',
     selfReplace: (options.selfReplace ?? env.SELF_REPLACE ?? '1') !== '0' && options.selfReplace !== false,
   };
   const fetchFn = options.fetchFn ?? fetch;
@@ -85,10 +93,21 @@ export function createApp(options = {}) {
   }
 
   const store = new Store(cfg.dataDir);
+  const snapshot = new Snapshotter({
+    url: cfg.snapshotUrl,
+    token: cfg.snapshotToken,
+    secret: cfg.webSecret || store.credentialKey.toString('hex'),
+    db: store.db,
+    fetchFn: options.snapshotFetch ?? fetch,
+    intervalMs: options.snapshotIntervalMs ?? 120000,
+    log: (m) => console.log(m),
+  });
   const catalogs = new CatalogStore({
     dir: path.join(cfg.dataDir, 'cache'),
     ttlMs: cfg.ttlMin * 60000,
     encryptionKey: store.credentialKey,
+    extraUrl: cfg.extraUrl,
+    extraLabel: cfg.extraLabel,
     // Listas ativadas por clientes são endereços digitados por qualquer pessoa: só internet pública.
     fetchFn: options.fetchFn ?? guardedFetch({ allowPrivate: cfg.allowPrivate }),
   });
@@ -138,6 +157,8 @@ export function createApp(options = {}) {
   const authFailLimiter = new Limiter(10, 60 * 60000); // senhas erradas por aparelho (evita adivinhar logins pelo painel)
   let activating = 0; // verificações de lista em andamento (limita o custo de downloads simultâneos)
   const webTokens = new WebTokens(cfg.webSecret);
+  // Segredo da chave de recuperação: WEB_SECRET (fixo no Render). Sem ele, usa a chave do banco.
+  const recoverySecret = cfg.webSecret || store.credentialKey.toString('hex');
   const corsList = cfg.corsOrigin.split(',').map((x) => x.trim()).filter(Boolean);
 
   const adminHtmlPath = path.join(__dirname, 'admin', 'index.html');
@@ -152,23 +173,12 @@ export function createApp(options = {}) {
 
   // ---------------------------------------------------------------- CORS e arquivos do site
   function corsHeaders(req) {
-    // Sempre permitir CORS para todos os clientes (apps, browsers, players)
-    if (!corsList.length) {
-      return {
-        'access-control-allow-origin': '*',
-        'access-control-expose-headers': 'Content-Length, Content-Range, Accept-Ranges',
-      };
-    }
+    if (!corsList.length) return {};
     const origin = req.headers.origin;
     let allow = null;
     if (corsList.includes('*')) allow = '*';
     else if (origin && corsList.includes(origin)) allow = origin;
-    if (!allow) {
-      return {
-        'access-control-allow-origin': '*',
-        'access-control-expose-headers': 'Content-Length, Content-Range, Accept-Ranges',
-      };
-    }
+    if (!allow) return {};
     return {
       'access-control-allow-origin': allow,
       vary: 'Origin',
@@ -202,7 +212,6 @@ export function createApp(options = {}) {
       return false;
     }
     if (rel === '/') rel = '/index.html';
-    else if (rel === '/ativar') rel = '/ativar.html';
     if (rel.includes('\0') || rel.includes('..')) return false;
     const root = path.resolve(cfg.webDir);
     const file = path.resolve(root, '.' + rel);
@@ -421,8 +430,14 @@ export function createApp(options = {}) {
 
   add('POST', '/api/v1/auth/login', async (ctx) => {
     const { body, ip } = ctx;
-    const user = String(body.username || '').trim();
-    const pass = String(body.password ?? '');
+    // Chave de recuperação (guardada pelo navegador): reativa o aparelho sem digitar a senha de novo.
+    let rec = null;
+    if (body.recovery) {
+      rec = openRecovery(recoverySecret, body.recovery);
+      if (!rec) throw new HttpError(400, 'invalid_recovery', { message: 'Sessão salva inválida. Entre novamente.' });
+    }
+    const user = String(rec ? rec.username : body.username || '').trim();
+    const pass = String(rec ? rec.password : body.password ?? '');
     const mac = normMac(body.mac) || normMac(ctx.req.headers['x-mac']);
     const key = normKey(body.key) || normKey(ctx.req.headers['x-key']);
 
@@ -433,7 +448,9 @@ export function createApp(options = {}) {
       throw new HttpError(400, 'invalid_identity', { message: 'Identificador do aparelho ausente.' });
     }
 
-    const requestedHost = String(body.serverHost || '').trim();
+    let requestedHost = String((rec ? rec.serverHost : body.serverHost) || '').trim();
+    // Servidor trocado para todos: uma chave de recuperação antiga que aponta para o servidor velho passa a usar o atual.
+    if (rec && requestedHost && oldServerHosts().includes(originOf(requestedHost))) requestedHost = '';
     const normalizedHost = requestedHost ? cleanPlaylistUrl(requestedHost) : xtreamHost();
     if (requestedHost && !normalizedHost) throw new HttpError(400, 'invalid_server_host', { message: 'Endereço do servidor Xtream inválido.' });
     const host = normalizedHost ? new URL(normalizedHost).origin : '';
@@ -483,9 +500,8 @@ export function createApp(options = {}) {
       status: 'active',
       username: user,
       expiresAt: account.expiresAt,
-      m3u_url: m3uUrl,
       serverHost: host,
-      template: getM3uTemplate()
+      recovery: sealRecovery(recoverySecret, { u: user, p: pass, h: host }),
     };
   });
 
@@ -512,6 +528,7 @@ export function createApp(options = {}) {
       const favIds = store.favoriteIds(mac);
       const rows = [];
 
+      const hideAdult = ctx.query.adult === 'hide';
       const cont = continueItems(mac, cat);
       if (cont.length) rows.push({ id: 'continue', title: 'Continuar assistindo', kind: 'continue', items: withFav(cont, favIds) });
 
@@ -519,13 +536,13 @@ export function createApp(options = {}) {
       if (favItems.length) rows.push({ id: 'favorites', title: 'Minha lista', kind: 'favorites', items: withFav(favItems, favIds) });
 
       for (const type of ['movie', 'series']) {
-        for (const g of cat.groups(type).slice(0, 4)) {
+        for (const g of cat.groups(type).filter((x) => !(hideAdult && isAdultGroup(x.name))).slice(0, 4)) {
           const { items } = cat.list(type, { group: g.name, limit: 20 });
           rows.push({ id: `g:${type}:${g.name}`, title: g.name, kind: type, items: withFav(items, favIds) });
         }
       }
       if (!cat.movies.length && !cat.series.length) {
-        for (const g of cat.groups('live').slice(0, 3)) {
+        for (const g of cat.groups('live').filter((x) => !(hideAdult && isAdultGroup(x.name))).slice(0, 3)) {
           const { items } = cat.list('live', { group: g.name, limit: 20 });
           rows.push({ id: `g:live:${g.name}`, title: g.name, kind: 'live', items: withFav(items, favIds) });
         }
@@ -535,7 +552,7 @@ export function createApp(options = {}) {
       if (cont.length) {
         hero = withFav([cont[0]], favIds)[0];
       } else {
-        const pool = [...cat.movies.slice(0, 200), ...cat.series.slice(0, 200)].filter((i) => i.logo);
+        const pool = [...cat.movies.slice(0, 200), ...cat.series.slice(0, 200)].filter((i) => i.logo && !(hideAdult && isAdultGroup(i.group)));
         if (pool.length) hero = withFav([pool[Math.floor(Date.now() / DAY_MS) % pool.length]], favIds)[0];
       }
       // Usa uma prévia local/cacheada; consultas externas seguem em /games sem atrasar a lista IPTV.
@@ -565,14 +582,17 @@ export function createApp(options = {}) {
         }
       }
 
+      const hide = ctx.query.adult === 'hide';
+      const exclude = hide ? (i) => isAdultGroup(i.group) : null;
       const offset = Math.max(0, parseInt(ctx.query.offset) || 0);
       // Canais ao vivo podem ter lista grande; filmes/séries ficam no limite de 200 por página
       const maxLimit = type === 'live' ? 3000 : 200;
       const limit = Math.min(maxLimit, Math.max(1, parseInt(ctx.query.limit) || 60));
       const favIds = store.favoriteIds(ctx.dev.mac);
-      const { total, items } = cat.list(type, { group: group || null, q: q || '', offset, limit });
+      const lockedGroup = hide && group && isAdultGroup(group);
+      const { total, items } = lockedGroup ? { total: 0, items: [] } : cat.list(type, { group: group || null, q: q || '', offset, limit, exclude });
       const out = { total, items: withFav(items, favIds) };
-      if (offset === 0 && !q) out.groups = cat.groups(type);
+      if (offset === 0 && !q) out.groups = hide ? cat.groups(type).filter((g) => !isAdultGroup(g.name)) : cat.groups(type);
       if (cat.warnings?.length) out.warning = 'Parte do catalogo Xtream nao carregou. Confira a conexao e tente atualizar.';
       return out;
     },
@@ -588,7 +608,8 @@ export function createApp(options = {}) {
       const cat = await ctx.dev.getCatalog();
       const favIds = store.favoriteIds(ctx.dev.mac);
       const res = {};
-      for (const t of ['live', 'movie', 'series']) res[t] = withFav(cat.list(t, { q, limit: 30 }).items, favIds);
+      const exclude = ctx.query.adult === 'hide' ? (i) => isAdultGroup(i.group) : null;
+      for (const t of ['live', 'movie', 'series']) res[t] = withFav(cat.list(t, { q, limit: 30, exclude }).items, favIds);
       return res;
     },
     { device: true }
@@ -673,7 +694,19 @@ export function createApp(options = {}) {
         const epg = await epgSvc.getEpgForChannel(it);
         return { epg };
       }
-      return (await metaSvc.lookup(it)) || {};
+      let m = metaSvc.enabled ? await metaSvc.lookup(it) : null;
+      if (m && !m.source) m = { ...m, source: 'TMDB' };
+      const noText = !m || !m.overview || /^Sinopse não disponível/.test(m.overview);
+      if (noText && typeof cat.metaFor === 'function') {
+        // Sem TMDB (ou sem resultado): usa a sinopse/gêneros/nota que o próprio servidor Xtream informa.
+        const x = await cat.metaFor(it).catch(() => null);
+        if (x) {
+          const merged = { ...(m || {}) };
+          for (const [k, v] of Object.entries(x)) if (v && (!merged[k] || (k === 'overview' && noText))) merged[k] = v;
+          m = merged;
+        }
+      }
+      return m || {};
     },
     { device: true }
   );
@@ -733,6 +766,39 @@ export function createApp(options = {}) {
         duration_ms: dur,
       });
       return { ok: true };
+    },
+    { device: true }
+  );
+
+  // Limpa "Continuar assistindo" (progresso de todos os filmes e episódios deste aparelho).
+  add(
+    'DELETE',
+    '/api/v1/history',
+    (ctx) => {
+      store.clearProgress(ctx.dev.mac);
+      return { ok: true };
+    },
+    { device: true }
+  );
+
+  // Dados da assinatura que só o provedor sabe (telas simultâneas). Cache curto para não sobrecarregar o provedor.
+  const accountCache = new Map();
+  add(
+    'GET',
+    '/api/v1/account',
+    async (ctx) => {
+      const mac = ctx.dev.mac;
+      const hit = accountCache.get(mac);
+      if (hit && Date.now() - hit.t < 60000) return hit.data;
+      let data = { maxConnections: null, activeConnections: null };
+      try {
+        const u = new URL(ctx.device.m3u_url);
+        const acc = await xtreamAccount(u.origin, u.searchParams.get('username') || '', u.searchParams.get('password') || '', { allowPrivate: cfg.allowPrivate, userAgent: cfg.streamUa });
+        if (acc) data = { maxConnections: acc.maxConnections, activeConnections: acc.activeConnections };
+      } catch { /* provedor fora do ar ou conta vencida: mostra só o que já se sabe */ }
+      if (accountCache.size > 500) accountCache.clear();
+      accountCache.set(mac, { t: Date.now(), data });
+      return data;
     },
     { device: true }
   );
@@ -847,6 +913,71 @@ export function createApp(options = {}) {
     new HttpError(status, 'playlist_invalid', { reason, message: REASON_TEXT[reason] || 'Lista inválida.', ...extra });
 
   // O front-end pergunta: tem servidor fixo (então o cliente só digita usuário e senha)?
+  // ---------------------------------------------------------------- servidor IPTV único para todos
+  // GET: aplicativos e site perguntam qual é o servidor atual. POST (com senha): troca para todos os aparelhos.
+  const originOf = (u) => { try { return new URL(u).origin; } catch { return ''; } };
+  const oldServerHosts = () => { try { return JSON.parse(store.getSetting('server_old_hosts') || '[]'); } catch { return []; } };
+  const serverLimiter = new Limiter(5, 15 * 60000); // 5 senhas erradas = 15 min de espera
+  const serverInfo = () => ({
+    host: xtreamHost(),
+    rev: Number(store.getSetting('server_rev') || 0),
+    updatedAt: Number(store.getSetting('server_updated_at') || 0),
+  });
+
+  add('GET', '/api/v1/server', () => serverInfo());
+
+  add('POST', '/api/v1/server', async (ctx) => {
+    const { ip, body } = ctx;
+    if (serverLimiter.blocked(ip)) throw new HttpError(429, 'too_many_attempts', { message: 'Muitas senhas erradas. Aguarde 15 minutos.' });
+    if (!safeEqual(String(body.password || ''), cfg.serverEditPassword)) {
+      serverLimiter.hit(ip);
+      throw new HttpError(401, 'wrong_password', { message: 'Senha incorreta.' });
+    }
+    const cleaned = cleanPlaylistUrl(String(body.host || '').trim());
+    if (!cleaned) throw new HttpError(400, 'invalid_host', { message: 'Endereço inválido. Use algo como http://servidor.com:80' });
+    const origin = new URL(cleaned).origin;
+    // Confere se o servidor responde antes de mudar todo mundo (a menos que force = true).
+    if (!body.force) {
+      try {
+        const r = await fetch(`${origin}/player_api.php`, { signal: AbortSignal.timeout(8000), headers: { 'user-agent': 'VLC/3.0.20 LibVLC/3.0.20' } });
+        await r.arrayBuffer().catch(() => {});
+      } catch {
+        throw new HttpError(422, 'unreachable', { message: 'Não consegui falar com esse servidor. Confira o endereço (ou confirme para salvar mesmo assim).' });
+      }
+    }
+    const old = originOf(xtreamHost());
+    let migrated = 0;
+    if (old && old !== origin) {
+      const prev = oldServerHosts().filter((h) => h !== origin);
+      prev.push(old);
+      store.setSetting('server_old_hosts', JSON.stringify(prev.slice(-10)));
+      // aparelhos já ativados guardam o link da lista: troca o servidor nele, mantendo usuário e senha
+      for (const d of store.listDevices()) {
+        if (!d.m3u_url) continue;
+        try {
+          const u = new URL(d.m3u_url);
+          if (u.origin !== old) continue;
+          catalogs.invalidate(d.m3u_url);
+          const to = new URL(origin);
+          u.protocol = to.protocol;
+          u.host = to.host;
+          store.updateDevice(d.mac, { m3u_url: u.toString() });
+          migrated++;
+        } catch { /* link inválido: ignora */ }
+      }
+    }
+    store.setSetting('xtream_host', origin);
+    store.setSetting('server_rev', String(Number(store.getSetting('server_rev') || 0) + 1));
+    store.setSetting('server_updated_at', String(Date.now()));
+    let hist = [];
+    try { hist = JSON.parse(store.getSetting('server_history') || '[]'); } catch { /* recomeça */ }
+    hist.push({ at: Date.now(), ip, from: old, to: origin });
+    store.setSetting('server_history', JSON.stringify(hist.slice(-20)));
+    applyIntegrations();
+    console.log(`[servidor] trocado ${old || '(vazio)'} -> ${origin} por ${ip}; ${migrated} aparelho(s) migrado(s)`);
+    return { ok: true, ...serverInfo(), migrated };
+  });
+
   add('GET', '/api/v1/activate/config', () => ({ loginMode: xtreamHost() ? 'userpass' : 'link', selfActivate: cfg.selfActivate, serverHost: xtreamHost() }));
 
   add('POST', '/api/v1/activate', async (ctx) => {
@@ -961,11 +1092,47 @@ export function createApp(options = {}) {
       const it = cat.byId.get(String(ctx.query.id || ''));
       if (!it || !it.url) throw new HttpError(404, 'not_found');
       let kind = kindFromUrl(it.url);
-      if (kind === 'unknown') {
-        kind = it.type === 'live' ? 'ts' : 'mp4';
+      if (kind === 'unknown' || kind === 'mkv') {
+        try {
+          const { res } = await safeGet(it.url, {
+            headers: { 'user-agent': cfg.streamUa },
+            allowPrivate: cfg.allowPrivate,
+            timeoutMs: 10000,
+          });
+          if (res.statusCode >= 400) {
+            res.destroy();
+            throw new HttpError(502, 'upstream_status', { upstreamStatus: res.statusCode });
+          }
+          const sniffed = sniffKind(await readHead(res));
+          if (sniffed !== 'unknown') kind = sniffed;
+        } catch (e) {
+          if (e instanceof HttpError) throw e;
+          throw new HttpError(502, e instanceof UpstreamError ? e.code : 'unreachable');
+        }
       }
+      if (kind === 'unknown') kind = it.type === 'live' ? 'ts' : 'mp4';
       const token = webTokens.sign(ctx.dev.mac);
       return { kind, src: proxyUrl(token, it.url, kind === 'hls'), live: it.type === 'live', token };
+    },
+    { device: true }
+  );
+
+  // Diagnóstico depois de uma falha: o servidor do provedor aceita a conexão? (usado só para explicar o erro ao usuário)
+  add(
+    'GET',
+    '/api/v1/web/diag',
+    async (ctx) => {
+      const cat = await ctx.dev.getCatalog();
+      const it = cat.byId.get(String(ctx.query.id || ''));
+      if (!it || !it.url) throw new HttpError(404, 'not_found');
+      try {
+        const { res } = await safeGet(it.url, { headers: { 'user-agent': cfg.streamUa }, allowPrivate: cfg.allowPrivate, timeoutMs: 8000 });
+        const status = res.statusCode || 0;
+        res.destroy();
+        return { ok: status < 400, status };
+      } catch (e) {
+        return { ok: false, code: e instanceof UpstreamError ? e.code : 'unreachable' };
+      }
     },
     { device: true }
   );
@@ -1234,6 +1401,11 @@ export function createApp(options = {}) {
     return { ok: true };
   }, { admin: true });
 
+  // ---------------------------------------------------------------- Media Station X
+  const msx = env.MSX_USER && env.MSX_PASS
+    ? createMsx({ host: () => env.MSX_HOST || xtreamHost() || 'http://trevorcdn.online:80', user: env.MSX_USER, pass: env.MSX_PASS, liveFormat: env.MSX_LIVE_FORMAT || 'm3u8' })
+    : null;
+
   // ---------------------------------------------------------------- servidor HTTP
   const server = http.createServer(async (req, res) => {
     const ip = clientIp(req);
@@ -1256,6 +1428,22 @@ export function createApp(options = {}) {
         return res.end();
       }
       if (url.pathname.startsWith('/api/')) for (const [k, v] of Object.entries(corsHeaders(req))) res.setHeader(k, v);
+
+      // Media Station X: /msx/*.json (só liga se MSX_USER e MSX_PASS estiverem definidos)
+      if (url.pathname.startsWith('/msx/') && msx) {
+        const proto = (req.headers['x-forwarded-proto'] || 'http').toString().split(',')[0];
+        const base = `${proto}://${req.headers['x-forwarded-host'] || req.headers.host}`;
+        let body;
+        try {
+          body = await msx.route(base, url.pathname, Object.fromEntries(url.searchParams));
+        } catch (e) {
+          res.writeHead(502, { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' });
+          return res.end(JSON.stringify({ type: 'pages', headline: 'Erro', items: [{ title: 'Não consegui falar com o servidor de IPTV. Tente de novo.', icon: 'error' }] }));
+        }
+        if (!body) throw new HttpError(404, 'not_found');
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*', 'cache-control': 'no-cache' });
+        return res.end(JSON.stringify(body));
+      }
 
       const m = match(req.method, url.pathname);
       if (!m) {
@@ -1299,11 +1487,16 @@ export function createApp(options = {}) {
     cfg,
     store,
     server,
+    snapshot,
     generatedPassword,
-    listen() {
+    async listen() {
+      await snapshot.restoreIfEmpty();
+      snapshot.start();
       return new Promise((resolve) => server.listen(cfg.port, '0.0.0.0', () => resolve(server.address().port)));
     },
-    close() {
+    async close() {
+      snapshot.stop();
+      await snapshot.save();
       return new Promise((resolve) => {
         server.close(() => {
           store.close();
@@ -1319,6 +1512,10 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (isMain) {
   const app = createApp();
   app.store.purgeOldGames(new Date(Date.now() - 7 * DAY_MS).toISOString().slice(0, 10));
+  // O Render avisa com SIGTERM antes de desligar: salva a cópia externa e sai.
+  process.once('SIGTERM', () => {
+    app.snapshot.save(true).finally(() => process.exit(0));
+  });
   app.listen().then((port) => {
     console.log(`Painel IPTV rodando na porta ${port}`);
     console.log(`Admin: http://localhost:${port}/admin  (usuário: ${app.cfg.adminUser})`);
@@ -1326,6 +1523,7 @@ if (isMain) {
       console.log(`ADMIN_PASSWORD não definida. Senha temporária desta execução: ${app.cfg.adminPassword}`);
       console.log('Defina ADMIN_PASSWORD no ambiente para fixar a senha.');
     }
+    console.log(app.snapshot.enabled ? 'Cópia externa (SNAPSHOT_URL) ligada.' : 'Sem SNAPSHOT_URL: favoritos e aparelhos se perdem se o disco do host for apagado.');
     if (!app.cfg.footballToken) console.log('Jogos automáticos desligados (FOOTBALL_DATA_TOKEN vazio): use os jogos manuais no admin.');
   });
 }

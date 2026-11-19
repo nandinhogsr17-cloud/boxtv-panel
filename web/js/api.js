@@ -72,7 +72,31 @@ export class ApiError extends Error {
   }
 }
 
-export async function api(path, { method = 'GET', body, signal } = {}) {
+let recovering = null;
+/** Reativa o aparelho com a chave de recuperação salva (servidor reiniciou e perdeu o cadastro). */
+export function recoverSession() {
+  const rec = store('iptv.recovery');
+  if (!rec) return Promise.resolve(false);
+  if (!recovering) {
+    recovering = (async () => {
+      try {
+        const res = await fetch(API_BASE + '/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'X-Mac': identity.mac, 'X-Key': identity.key, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recovery: rec, mac: identity.mac, key: identity.key, appVersion: 'web-1.0', model: navigator.platform || 'Web' }),
+        });
+        if (res.status === 400) { store('iptv.recovery', null); return false; }
+        if (!res.ok) return false;
+        const d = await res.json().catch(() => null);
+        if (d && d.recovery) store('iptv.recovery', d.recovery);
+        return true;
+      } catch { return false; }
+    })().finally(() => { setTimeout(() => { recovering = null; }, 3000); });
+  }
+  return recovering;
+}
+
+export async function api(path, { method = 'GET', body, signal, _retried = false } = {}) {
   const headers = { 'X-Mac': identity.mac, 'X-Key': identity.key };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   let res;
@@ -84,11 +108,21 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
   }
   let data = null;
   try { data = await res.json(); } catch { /* sem corpo */ }
-  if (!res.ok) throw new ApiError(res.status, data);
+  if (!res.ok) {
+    if ((res.status === 401 || res.status === 403) && data && data.error === 'device_not_active' && !_retried && !path.startsWith('/auth/') && await recoverSession()) {
+      return api(path, { method, body, signal, _retried: true });
+    }
+    throw new ApiError(res.status, data);
+  }
   return data;
 }
 
-export const login = (username, password, serverHost) =>
+export const login = async (username, password, serverHost) => {
+  const result = await loginRequest(username, password, serverHost);
+  if (result && result.recovery) store('iptv.recovery', result.recovery);
+  return result;
+};
+const loginRequest = (username, password, serverHost) =>
   api('/auth/login', {
     method: 'POST',
     body: {
@@ -104,6 +138,7 @@ export const login = (username, password, serverHost) =>
 
 export const logout = () => {
   localStorage.removeItem('iptv.logged_user');
+  store('iptv.recovery', null);
   identity.clear();
   location.reload();
 };
@@ -128,20 +163,3 @@ export function imgUrl(u) {
 }
 export const proxyAbs = (p) => (p.startsWith('http') ? p : API_BASE + p);
 
-/** Ativação pelo próprio app: manda a lista; o painel confere e só grava se funcionar. */
-export const activate = (m3uUrl) =>
-  api('/activate', { method: 'POST', body: { mac: identity.mac, key: identity.key, m3uUrl } });
-
-// ====================================================================== 🏧 Dispositivos e Ativação Remota
-export const getDeviceCode = () => 'BOX-' + identity.mac.toUpperCase().replace(/[^0-9A-F]/g, '');
-
-export const listDevices = () => api('/devices');
-
-export const activateDevice = (code, name, m3uUrl) =>
-  api('/devices/activate', { method: 'POST', body: { code, name, m3uUrl } });
-
-export const editDevice = (code, name, m3uUrl) =>
-  api('/devices/' + encodeURIComponent(code), { method: 'PUT', body: { name, m3uUrl } });
-
-export const removeDevice = (code) =>
-  api('/devices/' + encodeURIComponent(code), { method: 'DELETE' });

@@ -25,10 +25,16 @@ object DeviceIdentity {
 
     fun saveAuth(context: Context, user: String, pass: String) {
         val saved = runCatching { CredentialVault.save(context, user, pass) }.isSuccess
-        if (!saved) CredentialVault.clear(context)
-        // Remove credentials stored in plaintext by older app versions, including if migration fails.
-        context.getSharedPreferences("iptv_device", Context.MODE_PRIVATE)
-            .edit().remove("username").remove("password").apply()
+        val prefs = context.getSharedPreferences("iptv_device", Context.MODE_PRIVATE)
+        if (saved) {
+            // Guardado cifrado: remove qualquer cópia em texto de versões antigas.
+            prefs.edit().remove("username").remove("password").apply()
+        } else {
+            // Algumas TVs/boxes têm o cofre do Android quebrado. Sem isso o app pediria o login a cada abertura,
+            // então guarda na área privada do app (outros apps não leem).
+            CredentialVault.clear(context)
+            prefs.edit().putString("username", user).putString("password", pass).apply()
+        }
     }
 
     fun migrateAuth(context: Context) { getAuth(context) }
@@ -40,8 +46,8 @@ object DeviceIdentity {
         val pass = prefs.getString("password", null)
         if (!user.isNullOrBlank() && pass != null) {
             val saved = runCatching { CredentialVault.save(context, user, pass) }.isSuccess
-            prefs.edit().remove("username").remove("password").apply()
-            if (saved) return user to pass
+            if (saved) prefs.edit().remove("username").remove("password").apply()
+            return user to pass
         }
         return null to null
     }
@@ -54,6 +60,13 @@ object DeviceIdentity {
     fun getXtreamHost(context: Context, defaultUrl: String): String {
         val prefs = context.getSharedPreferences("iptv_device", Context.MODE_PRIVATE)
         return prefs.getString("xtream_host", null)?.takeIf { it.isNotBlank() } ?: defaultUrl
+    }
+
+    fun getServerRev(context: Context): Int =
+        context.getSharedPreferences("iptv_device", Context.MODE_PRIVATE).getInt("server_rev", 0)
+
+    fun saveServerRev(context: Context, rev: Int) {
+        context.getSharedPreferences("iptv_device", Context.MODE_PRIVATE).edit().putInt("server_rev", rev).apply()
     }
 
     fun saveXtreamHost(context: Context, url: String) {

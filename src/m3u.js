@@ -291,9 +291,10 @@ export class Catalog {
     return this._groups[type];
   }
 
-  list(type, { group = null, q = '', offset = 0, limit = 60 } = {}) {
+  list(type, { group = null, q = '', offset = 0, limit = 60, exclude = null } = {}) {
     let arr = this._arr(type);
     if (group) arr = arr.filter((i) => i.group === group);
+    if (exclude) arr = arr.filter((i) => !exclude(i));
     const tokens = norm(q).split(' ').filter(Boolean);
     if (tokens.length) {
       arr = arr.filter((i) => {

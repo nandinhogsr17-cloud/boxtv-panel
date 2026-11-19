@@ -2,6 +2,7 @@ package com.iptvplayer.tv.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,6 +55,7 @@ fun HomeScreen(
     onOpen: (Item) -> Unit,
     onPlay: (PlayRequest) -> Unit,
     onGames: () -> Unit,
+    onSearch: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as IptvApp
@@ -76,17 +78,32 @@ fun HomeScreen(
         }
     }
 
+    TvDiag.home = when (val d = state) {
+        is Load.Loading -> "carregando"
+        is Load.Err -> "erro"
+        is Load.Ok -> "ok hero=${d.value.hero != null} linhas=${d.value.rows.size}"
+    }
     when (val s = state) {
-        is Load.Loading -> CenterBox { Spinner() }
+        is Load.Loading -> CenterBox {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Spinner()
+                Spacer(Modifier.height(14.dp))
+                Text("Carregando seu catálogo…", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("Na primeira vez pode levar até 1 minuto.", color = TextSecondary, fontSize = 13.sp)
+            }
+        }
         is Load.Err -> ErrorBox(s.message) { attempt++ }
         is Load.Ok -> {
             val home = s.value
             if (home.hero == null && home.rows.isEmpty() && games.isEmpty() && !gamesLoading) {
-                CenterBox { Text("Sua lista ainda está vazia.", color = TextSecondary, fontSize = 16.sp) }
+                CenterBox { Text("Nada por aqui ainda.", color = TextSecondary, fontSize = 16.sp) }
             } else {
                 val continueRows = if (resumeEnabled) home.rows.filter { it.kind == "continue" } else emptyList()
                 val otherRows = home.rows.filterNot { it.kind == "continue" }
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
+                    if (compact && onSearch != null) {
+                        item(key = "search-pill") { HomeSearchPill(onSearch) }
+                    }
                     home.hero?.let { hero ->
                         item(key = "hero") { Hero(hero, onOpen, onPlay, compact) }
                     }
@@ -127,8 +144,9 @@ private fun Hero(item: Item, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> Un
     Box(
         Modifier
             .fillMaxWidth()
-            .height(if (compact) 340.dp else 330.dp)
-            .then(if (compact) Modifier else Modifier.clip(RoundedCornerShape(22.dp)))
+            .then(if (compact) Modifier.padding(horizontal = 16.dp, vertical = 8.dp) else Modifier)
+            .height(if (compact) 460.dp else 330.dp)
+            .clip(RoundedCornerShape(if (compact) 28.dp else 22.dp))
             .then(if (compact) Modifier else Modifier.border(1.dp, Brush.horizontalGradient(listOf(AccentAlt, Accent, Color.Transparent)), RoundedCornerShape(22.dp)))
     ) {
         item.posterUrl?.let { url ->
@@ -136,7 +154,7 @@ private fun Hero(item: Item, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> Un
                 model = url,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                alpha = if (compact) 0.38f else 0.78f,
+                alpha = if (compact) 1f else 0.78f,
                 modifier = if (compact) Modifier.fillMaxSize() else Modifier
                     .align(Alignment.CenterEnd)
                     .fillMaxHeight()
@@ -158,23 +176,34 @@ private fun Hero(item: Item, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> Un
         )
         Column(
             Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = if (compact) 20.dp else 54.dp, end = if (compact) 20.dp else 0.dp)
+                .align(if (compact) Alignment.BottomStart else Alignment.CenterStart)
+                .padding(start = if (compact) 22.dp else 54.dp, end = if (compact) 22.dp else 0.dp, bottom = if (compact) 22.dp else 0.dp)
                 .fillMaxWidth(if (compact) 1f else 0.53f)
         ) {
             if (compact) {
-                Text(if (resuming) "CONTINUAR ASSISTINDO" else "EM DESTAQUE", color = Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .border(1.dp, Accent.copy(alpha = 0.45f), RoundedCornerShape(50))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("✦", color = Accent, fontSize = 14.sp)
+                    Text(if (resuming) "Continue de onde parou" else "Em destaque", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     Box(Modifier.width(7.dp).height(7.dp).background(Accent, CircleShape))
-                    Text(if (resuming) "RETOME AGORA" else "DESTAQUE DA SUA LISTA", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp)
+                    Text(if (resuming) "RETOME AGORA" else "EM DESTAQUE", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp)
                 }
             }
             Spacer(Modifier.height(6.dp))
             Text(
                 item.title,
                 color = TextPrimary,
-                fontSize = if (compact) 27.sp else 36.sp,
+                fontSize = if (compact) 38.sp else 36.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -188,16 +217,18 @@ private fun Hero(item: Item, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> Un
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.then(if (compact) Modifier.fillMaxWidth() else Modifier), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ActionButton(
                     if (resuming) "▶ Continuar" else if (item.type == "series") "Ver episódios" else "▶ Assistir",
                     onClick = {
                         if (item.type == "series") onOpen(item) else onPlay(PlayRequest(listOf(item), 0))
                     },
+                    modifier = if (compact) Modifier.weight(1f) else Modifier,
                     primary = true,
+                    fillWidth = compact,
                 )
                 if (item.type == "movie" || item.type == "series") {
-                    ActionButton("Detalhes", onClick = { onOpen(item) })
+                    ActionButton("Detalhes", onClick = { onOpen(item) }, modifier = if (compact) Modifier.weight(1f) else Modifier, fillWidth = compact)
                 }
             }
         }
@@ -214,7 +245,7 @@ private fun GamesStrip(games: List<Game>, onPlay: (PlayRequest) -> Unit, onGames
             Row(Modifier.fillMaxWidth().padding(start = sidePadding, end = sidePadding, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column {
                     Text("FUTEBOL", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Accent, letterSpacing = 2.sp)
-                    Text("Partidas e canais da sua lista", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Text("Partidas e canais disponíveis", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 }
                 Spacer(Modifier.weight(1f))
                 Box(Modifier.clip(RoundedCornerShape(50)).background(Color(0x1A22D3C5)).border(1.dp, Accent.copy(alpha = 0.35f), RoundedCornerShape(50)).padding(horizontal = 13.dp, vertical = 7.dp)) {
@@ -314,7 +345,7 @@ private fun FootballGameCard(game: Game, onClick: () -> Unit) {
                 }
                 Spacer(Modifier.height(11.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(if (game.channels.isNotEmpty()) "▶  ASSISTIR NA SUA LISTA" else "VER CANAIS DISPONÍVEIS", color = if (game.channels.isNotEmpty()) Color.White else TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(if (game.channels.isNotEmpty()) "▶  ASSISTIR AGORA" else "VER CANAIS DISPONÍVEIS", color = if (game.channels.isNotEmpty()) Color.White else TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
                     if (game.channels.isNotEmpty()) Text("• ${game.channels.size} canal(is)", color = Accent, fontSize = 9.sp)
                 }
             }
@@ -326,5 +357,29 @@ private fun FootballGameCard(game: Game, onClick: () -> Unit) {
 private fun TeamBadge(name: String, color: Color) {
     Box(Modifier.size(28.dp).background(color.copy(alpha = 0.22f), CircleShape).border(1.dp, color.copy(alpha = 0.72f), CircleShape), contentAlignment = Alignment.Center) {
         Text(name.trim().firstOrNull()?.uppercase() ?: "?", color = color, fontSize = 12.sp, fontWeight = FontWeight.Black)
+    }
+}
+
+
+/** Campo de busca do Início (celular): abre a aba Buscar. */
+@Composable
+private fun HomeSearchPill(onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Surface1)
+            .border(1.dp, Accent.copy(alpha = 0.28f), RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .padding(start = 18.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("✦", color = Accent, fontSize = 18.sp)
+        Spacer(Modifier.width(12.dp))
+        Text("O que você quer assistir hoje?", color = TextPrimary, fontSize = 18.sp, modifier = Modifier.weight(1f), maxLines = 1)
+        Box(Modifier.size(48.dp).clip(CircleShape).background(Accent), contentAlignment = Alignment.Center) {
+            PhoneIconView(PhoneIcon.SEARCH, OnAccent, size = 24.dp)
+        }
     }
 }

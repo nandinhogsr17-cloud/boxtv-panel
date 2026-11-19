@@ -7,6 +7,8 @@ import android.view.ViewGroup
 import java.util.Locale
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +46,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.nativeKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -52,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -82,11 +86,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private fun buildPlayer(context: Context, settings: AppSettings): ExoPlayer {
-    val http = DefaultHttpDataSource.Factory()
+    // OkHttp (e não o cliente padrão do Android) para o vídeo respeitar o DNS escolhido em Configurações
+    val http = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(com.iptvplayer.tv.data.NetClients.client)
         .setUserAgent(BuildConfig.STREAM_UA)
-        .setAllowCrossProtocolRedirects(true)
-        .setConnectTimeoutMs(15_000)
-        .setReadTimeoutMs(20_000)
     // IPTV costuma entregar MPEG-TS "cru": estas opções deixam o TS mais tolerante.
     val extractors = DefaultExtractorsFactory()
         .setTsExtractorFlags(
@@ -138,6 +140,10 @@ private fun buildPlayer(context: Context, settings: AppSettings): ExoPlayer {
  */
 @Composable
 fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        ScreenController.fullBleed = true
+        onDispose { ScreenController.fullBleed = false }
+    }
     val context = LocalContext.current
     val app = context.applicationContext as IptvApp
     val settings = remember { AppPreferences.read(context) }
@@ -155,6 +161,8 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
 
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var errorTick by remember { mutableIntStateOf(0) }
+    var altStep by remember { mutableIntStateOf(0) }
+    var lastErr by remember { mutableStateOf("") }
     var endedTick by remember { mutableIntStateOf(0) }
     var retries by remember { mutableIntStateOf(0) }
     var buffering by remember { mutableStateOf(true) }
@@ -170,12 +178,77 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
     var fav by remember(current.id) { mutableStateOf(current.favorite) }
     var epgData by remember(current.id) { mutableStateOf<com.iptvplayer.tv.data.EpgData?>(null) }
     val focus = remember { FocusRequester() }
+    var numBuf by remember { mutableStateOf("") }
+    var hint by remember { mutableStateOf<String?>(null) }
+
+    // Guarda o último canal ao vivo assistido
+    LaunchedEffect(current.id) {
+        if (current.isLive) {
+            com.iptvplayer.tv.data.LastChannel.set(context, current.id, current.group)
+            app.api.direct?.recordLive(current.id)
+        }
+    }
+    // Número do canal: junta os dígitos e, após uma pausa, pula para a posição digitada na lista
+    LaunchedEffect(numBuf) {
+        if (numBuf.isEmpty()) return@LaunchedEffect
+        delay(1500)
+        val n = numBuf.toIntOrNull()
+        if (n != null && n in 1..queue.size) index = n - 1 else hint = "Canal $numBuf não existe"
+        numBuf = ""
+    }
+    LaunchedEffect(hint) {
+        if (hint == null) return@LaunchedEffect
+        delay(2500)
+        hint = null
+    }
+    fun trackName(f: androidx.media3.common.Format, n: Int): String =
+        (f.label ?: f.language?.let { java.util.Locale(it).displayLanguage }?.takeIf { it.isNotBlank() } ?: "Faixa $n")
+    fun cycleAudio() {
+        val groups = exo.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO && it.isSupported }
+        if (groups.size < 2) { hint = "Este vídeo só tem um áudio"; return }
+        val next = groups[(groups.indexOfFirst { it.isSelected }.coerceAtLeast(0) + 1) % groups.size]
+        exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(next.mediaTrackGroup, 0)).build()
+        hint = "Áudio: " + trackName(next.mediaTrackGroup.getFormat(0), groups.indexOf(next) + 1)
+    }
+    fun cycleSubtitle() {
+        val groups = exo.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
+        if (groups.isEmpty()) { hint = "Sem legendas neste vídeo"; return }
+        val sel = groups.indexOfFirst { it.isSelected }
+        val b = exo.trackSelectionParameters.buildUpon()
+        if (sel == groups.size - 1) {
+            b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            hint = "Legenda: desligada"
+        } else {
+            val next = groups[sel + 1]
+            b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).setOverrideForType(TrackSelectionOverride(next.mediaTrackGroup, 0))
+            hint = "Legenda: " + trackName(next.mediaTrackGroup.getFormat(0), sel + 2)
+        }
+        exo.trackSelectionParameters = b.build()
+    }
+
+    // Pausa quando o app sai da tela (Início na TV, janela fechada no celular), exceto em imagem dentro de imagem
+    DisposableEffect(exo) {
+        val owner = DeviceUtil.findActivity(context) as? androidx.lifecycle.LifecycleOwner
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            // isInPictureInPictureMode só existe a partir do Android 7 (API 24); Fire Stick antigo é Android 5/6
+            val inPip = android.os.Build.VERSION.SDK_INT >= 24 && DeviceUtil.findActivity(context)?.isInPictureInPictureMode == true
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && !inPip) exo.pause()
+        }
+        owner?.lifecycle?.addObserver(obs)
+        onDispose { owner?.lifecycle?.removeObserver(obs) }
+    }
 
     DisposableEffect(exo) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying
                 if (isPlaying) {
+                    // Se o plano B (outro formato) foi o que funcionou, o app aprende e usa esse formato nos próximos canais
+                    if (altStep > 0 && currentState.value.isLive) {
+                        val u = exo.currentMediaItem?.localConfiguration?.uri?.toString()?.substringBefore('?').orEmpty()
+                        app.api.direct?.rememberLiveFormat(u.substringAfterLast('.', ""))
+                    }
                     errorMsg = null
                     retries = 0
                 }
@@ -187,6 +260,7 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                lastErr = error.errorCodeName
                 errorTick++
             }
         }
@@ -264,10 +338,12 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
     LaunchedEffect(current.id) {
         errorMsg = null
         retries = 0
+        altStep = 0
         buffering = true
         epgData = null
         val url = current.url
         if (url.isNullOrBlank()) {
+            exo.stop()
             errorMsg = "Endereço de vídeo indisponível."
             return@LaunchedEffect
         }
@@ -297,14 +373,27 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
     // Erro: canais tentam reconectar até 5 vezes.
     LaunchedEffect(errorTick) {
         if (errorTick == 0) return@LaunchedEffect
+        // Inteligente: antes de desistir, tenta o mesmo vídeo em outro formato (ts <-> m3u8 no ao vivo, mp4 <-> mkv nos filmes).
+        val alt = if (altStep < 1) alternateUrl(current.url, current.isLive) else null
+        if (alt != null) {
+            altStep++
+            errorMsg = "Tentando outro formato…"
+            val mi = MediaItem.Builder().setUri(alt)
+                .apply { if (alt.contains(".m3u8", ignoreCase = true)) setMimeType(MimeTypes.APPLICATION_M3U8) }.build()
+            exo.setMediaItem(mi)
+            exo.prepare()
+            exo.playWhenReady = true
+            return@LaunchedEffect
+        }
         if (current.isLive && retries < 5) {
             retries++
             errorMsg = "Reconectando… ($retries/5)"
             delay(3000)
             exo.prepare()
         } else {
-            errorMsg = if (current.isLive) "Canal indisponível. Use ▲ ▼ para trocar de canal."
-            else "Não foi possível reproduzir este vídeo."
+            val code = if (lastErr.isNotBlank()) " ($lastErr)" else ""
+            errorMsg = if (current.isLive) "Canal indisponível$code. Use ▲ ▼ para trocar de canal."
+            else "Não foi possível reproduzir este vídeo$code."
         }
     }
 
@@ -391,9 +480,17 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { uiTick++ },
+                    onDoubleTap = { if (exo.isPlaying) exo.pause() else exo.play() },
+                )
+            }
             .focusRequester(focus)
             .focusable()
             .onPreviewKeyEvent { ev ->
+                // O KeyUp do MENU não pode chegar à Activity (abriria o ajuste de tela)
+                if (ev.key == Key.Menu && ev.type == KeyEventType.KeyUp) return@onPreviewKeyEvent true
                 if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 uiTick++
                 when (ev.key) {
@@ -442,6 +539,23 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
                     }
                     Key.DirectionDown, Key.ChannelDown -> {
                         if (current.isLive) step(1)
+                        true
+                    }
+                    Key.Zero, Key.One, Key.Two, Key.Three, Key.Four, Key.Five, Key.Six, Key.Seven, Key.Eight, Key.Nine,
+                    Key.NumPad0, Key.NumPad1, Key.NumPad2, Key.NumPad3, Key.NumPad4, Key.NumPad5, Key.NumPad6, Key.NumPad7, Key.NumPad8, Key.NumPad9 -> {
+                        if (current.isLive && numBuf.length < 4) {
+                            val kc = ev.nativeKeyEvent.keyCode
+                            val d: Char? = when (kc) { in 7..16 -> '0' + (kc - 7); in 144..153 -> '0' + (kc - 144); else -> null }
+                            if (d != null) numBuf += d
+                        }
+                        true
+                    }
+                    Key.MediaAudioTrack, Key.Info -> {
+                        cycleAudio()
+                        true
+                    }
+                    Key.Captions, Key.Guide -> {
+                        cycleSubtitle()
                         true
                     }
                     Key.MediaPrevious -> {
@@ -551,6 +665,14 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
         }
         if (!playing && !buffering && errorMsg == null && !current.isLive && !casting) {
             Text("❚❚", color = Color.White, fontSize = 48.sp, modifier = Modifier.align(Alignment.Center))
+        }
+        if (numBuf.isNotEmpty()) {
+            Text(numBuf, color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Black,
+                modifier = Modifier.align(Alignment.TopEnd).padding(32.dp).background(Color(0xAA000000), RoundedCornerShape(12.dp)).padding(horizontal = 18.dp, vertical = 8.dp))
+        }
+        hint?.let { h ->
+            Text(h, color = Color.White, fontSize = 16.sp,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp).background(Color(0xAA000000), RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp))
         }
         errorMsg?.let { msg ->
             Text(
@@ -683,4 +805,15 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
             )
         }
     }
+}
+
+/** Mesma mídia em outro formato, para o plano B quando o primeiro falha. Só mexe em endereços no padrão Xtream. */
+private fun alternateUrl(url: String?, live: Boolean): String? {
+    if (url.isNullOrBlank()) return null
+    val m = Regex("""^(.*/)([^/]+?)\.([A-Za-z0-9]{2,4})(\?.*)?$""").find(url) ?: return null
+    val (base, name, ext) = Triple(m.groupValues[1], m.groupValues[2], m.groupValues[3].lowercase())
+    val tail = m.groupValues[4]
+    val to = if (live) when (ext) { "ts" -> "m3u8"; "m3u8" -> "ts"; else -> return null }
+    else when (ext) { "mp4" -> "mkv"; "mkv" -> "mp4"; else -> return null }
+    return "$base$name.$to$tail"
 }

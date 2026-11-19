@@ -1,5 +1,6 @@
 package com.iptvplayer.tv.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -8,13 +9,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,7 +24,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,274 +32,148 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
-/**
- * Tela de abertura espetacular com animaÃ§Ã£o da marca BoxTv,
- * efeito neon dinÃ¢mico, slogan marcante e barra de progresso inteligente.
- */
+private val SplashGold = Color(0xFFFFB43B)
+private val SplashGoldSoft = Color(0xFFFFD666)
+private val SplashNavy = Color(0xFF0B1220)
+
+/** Abertura do app na paleta azul-marinho e dourado: emblema com brilho pulsante, nome da marca e barra de progresso. */
 @Composable
 fun SplashScreen(
     statusText: String = "Conectando ao BoxTv...",
 ) {
-    // Controladores de animaÃ§Ã£o de entrada
-    val logoScale = remember { Animatable(0.6f) }
+    val logoScale = remember { Animatable(0.7f) }
     val logoAlpha = remember { Animatable(0f) }
     val sloganAlpha = remember { Animatable(0f) }
     val progressAlpha = remember { Animatable(0f) }
 
-    // Pulso de neon contÃ­nuo
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val glowScale by infiniteTransition.animateFloat(
-        initialValue = 0.95f,
-        targetValue = 1.08f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glowScale"
+    val infinite = rememberInfiniteTransition(label = "splash")
+    val glowScale by infinite.animateFloat(
+        initialValue = 0.94f, targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(tween(1900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "glowScale",
     )
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.75f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glowAlpha"
+    val glowAlpha by infinite.animateFloat(
+        initialValue = 0.3f, targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(tween(1900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "glowAlpha",
     )
-
-    // Barra de luz que corre pela barra de carregamento
-    val shimmerOffset by infiniteTransition.animateFloat(
-        initialValue = -1f,
-        targetValue = 2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "shimmer"
+    val sweep by infinite.animateFloat(
+        initialValue = -0.4f, targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
+        label = "sweep",
     )
 
     LaunchedEffect(Unit) {
-        // SequÃªncia cinematogrÃ¡fica
-        logoAlpha.animateTo(1f, animationSpec = tween(600, easing = FastOutSlowInEasing))
-        logoScale.animateTo(1f, animationSpec = tween(700, easing = FastOutSlowInEasing))
-        delay(200)
-        sloganAlpha.animateTo(1f, animationSpec = tween(700, easing = FastOutSlowInEasing))
-        progressAlpha.animateTo(1f, animationSpec = tween(500, easing = FastOutSlowInEasing))
-
+        logoAlpha.animateTo(1f, tween(500, easing = FastOutSlowInEasing))
+        logoScale.animateTo(1f, tween(650, easing = FastOutSlowInEasing))
+        delay(150)
+        sloganAlpha.animateTo(1f, tween(600, easing = FastOutSlowInEasing))
+        progressAlpha.animateTo(1f, tween(450, easing = FastOutSlowInEasing))
     }
 
     Box(
-        modifier = Modifier
+        Modifier
             .fillMaxSize()
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF1E1435),
-                        Color(0xFF0F0B1A),
-                        Color(0xFF07050E)
-                    ),
-                    center = Offset.Unspecified,
-                    radius = 1200f
-                )
-            ),
-        contentAlignment = Alignment.Center
+            .background(Brush.radialGradient(listOf(Color(0xFF16264A), Color(0xFF0B1220), Color(0xFF060A14)), radius = 1400f)),
+        contentAlignment = Alignment.Center,
     ) {
-        // Luz ambiente de fundo neon (Glow difuso)
         Box(
-            modifier = Modifier
-                .size(320.dp)
+            Modifier
+                .size(340.dp)
                 .scale(glowScale)
                 .alpha(glowAlpha)
                 .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFFFF0055).copy(alpha = 0.45f),
-                            Color(0xFF7C5CFF).copy(alpha = 0.25f),
-                            Color.Transparent
-                        )
-                    ),
-                    shape = CircleShape
-                )
+                    Brush.radialGradient(listOf(SplashGold.copy(alpha = 0.40f), SplashGold.copy(alpha = 0.10f), Color.Transparent)),
+                    CircleShape,
+                ),
         )
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(horizontal = 32.dp)
+            modifier = Modifier.padding(horizontal = 32.dp),
         ) {
-            // Ãcone 3D / TV Box futurista
             Box(
-                modifier = Modifier
+                Modifier
                     .scale(logoScale.value)
                     .alpha(logoAlpha.value)
-                    .size(110.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(
-                        Brush.linearGradient(
-                            listOf(Color(0xFF241838), Color(0xFF130E22), Color(0xFF0B0716))
-                        )
-                    )
-                    .border(
-                        width = 2.dp,
-                        brush = Brush.linearGradient(
-                            listOf(Color(0xFFFF0055), Color(0xFF7C5CFF), Color(0xFF00FFCC))
-                        ),
-                        shape = RoundedCornerShape(28.dp)
-                    ),
-                contentAlignment = Alignment.Center
+                    .size(112.dp)
+                    .clip(RoundedCornerShape(30.dp))
+                    .background(Brush.linearGradient(listOf(SplashGoldSoft, SplashGold, Color(0xFFFF9A2E)))),
+                contentAlignment = Alignment.Center,
             ) {
-                // Desenho do Play estilizado no centro
-                Canvas(modifier = Modifier.size(46.dp)) {
-                    val path = Path().apply {
-                        moveTo(size.width * 0.28f, size.height * 0.18f)
-                        lineTo(size.width * 0.82f, size.height * 0.50f)
-                        lineTo(size.width * 0.28f, size.height * 0.82f)
+                Canvas(Modifier.size(48.dp)) {
+                    val p = Path().apply {
+                        moveTo(size.width * 0.26f, size.height * 0.12f)
+                        lineTo(size.width * 0.86f, size.height * 0.50f)
+                        lineTo(size.width * 0.26f, size.height * 0.88f)
                         close()
                     }
-                    drawPath(
-                        path = path,
-                        brush = Brush.linearGradient(
-                            listOf(Color(0xFFFFFFFF), Color(0xFFFF3366), Color(0xFF7C5CFF))
-                        )
-                    )
+                    drawPath(p, SplashNavy)
                 }
-
-                // LED frontal aceso no rodapÃ© da caixinha
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 8.dp)
-                        .size(6.dp)
-                        .background(Color(0xFF00FFCC), shape = CircleShape)
-                )
             }
 
             Spacer(Modifier.height(20.dp))
 
-            // Nome da Marca "BoxTv"
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .scale(logoScale.value)
-                    .alpha(logoAlpha.value)
-            ) {
-                Text(
-                    text = "Box",
-                    color = Color.White,
-                    fontSize = 40.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = (-1).sp
-                )
-                Text(
-                    text = "Tv",
-                    color = Color(0xFFFF0055),
-                    fontSize = 40.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = (-1).sp
-                )
-                Text(
-                    text = " ⚡",
-                    fontSize = 28.sp,
-                    modifier = Modifier.padding(start = 2.dp)
-                )
+            Row(Modifier.scale(logoScale.value).alpha(logoAlpha.value), verticalAlignment = Alignment.CenterVertically) {
+                Text("Box", color = Color(0xFFF5F7FF), fontSize = 42.sp, fontWeight = FontWeight.Black, letterSpacing = (-1).sp)
+                Text("Tv", color = SplashGold, fontSize = 42.sp, fontWeight = FontWeight.Black, letterSpacing = (-1).sp)
             }
 
             Spacer(Modifier.height(10.dp))
 
-            // Slogan Oficial e Chamativo
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.alpha(sloganAlpha.value)
-            ) {
-                Text(
-                    text = "O MELHOR DO ENTRETENIMENTO",
-                    color = Color(0xFFFFC857),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 3.sp,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Canais Ao Vivo \u00B7 Filmes \u00B7 S\u00E9ries \u00B7 Jogos",
-                    color = Color(0xFF9E9EB8),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 1.sp,
-                    textAlign = TextAlign.Center
-                )
+            Column(Modifier.alpha(sloganAlpha.value), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("CANAIS · FILMES · SÉRIES", color = SplashGold, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp, textAlign = TextAlign.Center)
             }
 
-            Spacer(Modifier.height(36.dp))
+            Spacer(Modifier.height(34.dp))
 
-            // Barra de Carregamento Futurista
             Column(
+                Modifier.alpha(progressAlpha.value).widthIn(max = 280.dp).fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .alpha(progressAlpha.value)
-                    .widthIn(max = 280.dp)
-                    .fillMaxWidth()
             ) {
-                // Trilho da barra
                 Box(
-                    modifier = Modifier
+                    Modifier
                         .fillMaxWidth()
                         .height(5.dp)
                         .clip(RoundedCornerShape(3.dp))
-                        .background(Color(0x33FFFFFF))
+                        .background(Color(0x26FFFFFF)),
                 ) {
-                    // Barra animada com gradiente e shimmer
                     Box(
-                        modifier = Modifier
+                        Modifier
                             .fillMaxWidth(0.85f)
                             .height(5.dp)
                             .clip(RoundedCornerShape(3.dp))
                             .background(
                                 Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color(0xFFFF0055),
-                                        Color(0xFF7C5CFF),
-                                        Color(0xFF00FFCC)
-                                    ),
-                                    startX = shimmerOffset * 300f,
-                                    endX = (shimmerOffset + 1f) * 300f
-                                )
-                            )
+                                    listOf(Color(0x66FFB43B), SplashGoldSoft, Color(0x66FFB43B)),
+                                    startX = sweep * 300f,
+                                    endX = (sweep + 0.8f) * 300f,
+                                ),
+                            ),
                     )
                 }
-
                 Spacer(Modifier.height(14.dp))
-
-                // Texto dinÃ¢mico de status
                 AnimatedContent(
                     targetState = statusText,
                     transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
-                    label = "box-tv-loading-status",
+                    label = "boxtv-splash-status",
                 ) { status ->
-                    Text(
-                        text = status,
-                        color = Color(0xFFB5B5D0),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Normal,
-                        textAlign = TextAlign.Center,
-                    )
+                    Text(status, color = Color(0xFFAAB8D6), fontSize = 12.sp, textAlign = TextAlign.Center)
                 }
             }
         }

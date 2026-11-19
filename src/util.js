@@ -125,3 +125,12 @@ export function isHttpUrl(s) {
     return false;
   }
 }
+
+/** Categorias adultas (pelo nome do grupo). Usado quando o app pede "adult=hide" (senha de conteúdo adulto). */
+export function isAdultGroup(name) {
+  const n = String(name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return /(^|[^a-z0-9])(xxx|adult[oa]?s?|porn[oa]?s?|erotic[oa]?s?|sexo|sex|hentai|sensual|sensuais|\+\s?18|18\s?\+|for adults)([^a-z0-9]|$)/.test(n);
+}

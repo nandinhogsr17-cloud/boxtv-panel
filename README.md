@@ -181,3 +181,50 @@ As URLs Xtream/M3U são cifradas no SQLite com AES-256-GCM. Em produção, defin
 - Removidas as rotas públicas antigas `/api/v1/devices*` e `/api/v1/config/server` (expunham chaves e senhas Xtream e permitiam trocar o servidor). Use o `/admin`. O `test/security-tests.js` garante que não voltem.
 - Login Xtream agora também é limitado por IP (além do MAC).
 - No Render o `TRUST_PROXY` liga sozinho; o `render.yaml` fica na raiz do repositório com `rootDir: panel`. Defina `ADMIN_PASSWORD` no painel do Render. No plano grátis o disco é efêmero: aparelhos e banco se perdem a cada reinício.
+
+## Versão do celular e limpeza do cliente
+
+- O app (celular e TV) e o site **não têm mais** tela de ativação, MAC, chave nem link M3U: só login com usuário e senha Xtream. A página `/ativar` foi removida. O MAC/chave continuam existindo só por dentro, para identificar o aparelho na API.
+- A API legada de ativação (`/api/v1/activate`) continua no servidor, mas o `render.yaml` a deixa **desligada** (`SELF_ACTIVATE=0`).
+- Celular: nova aparência (dourado sobre azul-noite), barra inferior Início · Ao vivo · Filmes · Séries · Futebol, busca no topo, seletor de categoria e grade de 3 colunas. A TV mantém o visual anterior.
+- Transmissão (Chromecast/Google Cast) envia **só o vídeo do player**, nunca a tela inteira do celular; o botão fica dentro do player. A `MainActivity` agora é `FragmentActivity` (exigência do botão de Cast).
+
+## Ajuste de tela (TV, TV Box, Fire Stick e celular)
+
+- **Automático:** a TV é ajustada para uma tela de projeto de 960×540 dp, qualquer que seja a resolução/densidade que o aparelho informa (TV Box com densidade errada deixava tudo minúsculo ou gigante). O celular mantém o tamanho do sistema; tablets/dobráveis crescem um pouco e a grade ganha mais colunas.
+- **Manual (opcional):** em *Conta → Tela → Ajuste fino (opcional)* ou tecla **MENU** do controle. Tamanho da interface (60–160%) e, na TV, margem lateral e superior/inferior (0–12%). O botão "Voltar ao automático" restaura o recomendado. Na tela de login não há mais botão de ajuste.
+- **Inteligente:** o app classifica o aparelho (TV HD / Full HD / 4K, celular pequeno, celular, tablet) e guarda o ajuste manual junto com a "assinatura" da tela (resolução + densidade). Se você trocar de TV ou de resolução, o ajuste antigo é descartado e volta o automático.
+- **Automático por padrão:** a TV usa base 960×540 dp com margem segura de 3% (não vale dentro do player, que fica em tela cheia); o celular mantém o tamanho do sistema, encolhe se a largura for menor que 320 dp e cresce até 1,2× em tablets. A TV não informa de forma confiável o overscan, por isso a margem de 3% é um padrão seguro.
+- **Sem risco de ficar preso:** todo ajuste é um teste de 15 s e volta sozinho se não for confirmado; só o confirmado é gravado; se o app falhar 3 vezes seguidas ao abrir, volta ao recomendado; o painel sempre aparece em escala normal. Fonte do sistema limitada a 0,85–1,3× para não quebrar o layout.
+- Código: `ScreenMath.kt` (cálculo puro, com testes em `src/test`), `ScreenController.kt` (estado, teste/confirmação, aplicação global) e `ScreenCalibration.kt` (painel).
+
+
+## Visual da TV e configurações (v7)
+
+- **TV:** barra lateral de ícones (Início, Ao vivo, Filmes, Séries, Futebol · Buscar, Favoritos, Configurações), data e hora no topo, paleta dourada igual à do celular. Subir/descer na barra troca de tela; voltar do conteúdo para a barra não troca.
+- **Filmes e Séries (TV):** coluna de categorias com contagem, grade de capas e painel do título em foco (capa, ano, nota, sinopse buscada com pequeno atraso). **Ao vivo:** canais numerados e grupos com contagem.
+- **Configurações:** cartão de assinatura (situação, validade, dias restantes), lista de ações (Atualizar lista, Sair desta conta) e janelas para *Player e buffer*, *Áudio e legendas*, *Tela* e *Atalhos*. Sem MAC e sem painel de ativação.
+- **Ainda não existe (precisa de servidor/API):** senha de conteúdo adulto, limpar histórico, perfis, prévia do canal com guia (EPG) na tela Ao vivo, formato/zoom do ao vivo e tempo de abertura.
+- **Aviso:** o código Android não foi compilado neste ambiente; faça o build no Android Studio e teste na TV e no celular.
+
+## Fluidez e inteligência (v8)
+
+- **Repetição automática:** pedidos de leitura que falham por rede ou com o servidor acordando (502/503/504) são repetidos até 3 vezes (1,5 s e 3 s) antes de mostrar erro.
+- **Último conteúdo conhecido:** se a rede cair depois de já ter carregado uma tela, o app mostra os dados antigos em vez de uma tela de erro.
+- **Capas:** cache em disco de 150 MB e ignorando cabeçalhos "no-cache"; em aparelhos com pouca memória usa menos RAM e imagens mais leves (RGB 565).
+- **Categoria lembrada:** Ao vivo, Filmes e Séries reabrem na última categoria usada; se ela não existir mais, voltam para "Todos".
+
+## Correções urgentes (v9)
+
+- **Sinopse sem TMDB:** o painel usa a sinopse, gêneros, nota e elenco que o próprio servidor Xtream informa (`get_vod_info` / `get_series_info`). O TMDB continua sendo usado se houver chave. A página mostra "Fonte: seu servidor" ou "TMDB".
+- **Vídeo começa sozinho:** se o navegador bloquear o início automático com som, o site começa sem som e avisa para tocar em 🔇, sem exigir outro clique em Assistir.
+- **Erro explicado:** quando o vídeo não abre, o painel pergunta ao provedor o motivo (recusou a conexão, bloqueou o servidor, não achou o vídeo, demorou) e mostra em português (`/api/v1/web/diag`).
+- Teste novo: `test/playback-tests.js` (sinopse, canal, filme e episódio com provedor falso).
+
+## Reinício do servidor sem perder o acesso (v10)
+
+- **Problema:** na Render grátis o serviço dorme e reinicia com o disco zerado. O painel passava a responder `device_not_active` (403) para tudo, e nada tocava até digitar a senha de novo.
+- **Site:** o login agora devolve uma *chave de recuperação* (conta cifrada com `WEB_SECRET`, que fica fixo no Render). O navegador guarda esse texto e, ao receber `device_not_active`, reativa o aparelho sozinho e repete o pedido. Sair da conta apaga a chave.
+- **App Android:** reentra sozinho também quando recebe 403 `device_not_active` (antes só reagia ao 401).
+- **Importante:** mantenha `WEB_SECRET` fixo no Render. Se ele mudar, as chaves salvas deixam de valer e é preciso entrar de novo.
+- Testes novos em `test/playback-tests.js` (reinício, chave adulterada, chave de outro servidor).

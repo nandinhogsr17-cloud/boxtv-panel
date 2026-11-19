@@ -31,6 +31,46 @@ export class XtreamCatalog {
     this._vodCache = new Map(); // cat_id -> items
     this._seriesCache = new Map(); // cat_id -> items
     this._seriesInfoCache = new Map(); // series_id -> series detail
+    this._metaCache = new Map(); // id -> metadados do próprio servidor Xtream
+  }
+
+  /** Sinopse, gêneros, nota e imagens que o próprio servidor Xtream informa (não depende do TMDB). */
+  async metaFor(item) {
+    if (!item || (item.type !== 'movie' && item.type !== 'series')) return null;
+    if (this._metaCache.has(item.id)) return this._metaCache.get(item.id);
+    let value = null;
+    try {
+      const isMovie = item.type === 'movie';
+      const raw = String(item.id).replace(/^[vs]_/, '');
+      const data = isMovie
+        ? await this._api('get_vod_info', `&vod_id=${encodeURIComponent(raw)}`)
+        : await this._api('get_series_info', `&series_id=${encodeURIComponent(raw)}`);
+      const i = (data && data.info) || {};
+      const text = (v) => (v == null ? '' : String(Array.isArray(v) ? v[0] : v)).trim();
+      const overview = text(i.plot || i.description || i.overview);
+      const backdrop = text(i.backdrop_path) || text(i.backdrop);
+      const poster = text(i.movie_image) || text(i.cover_big) || text(i.cover);
+      const rating = Number(i.rating) || Number(i.rating_5based) * 2 || null;
+      const year = Number(text(i.releasedate || i.release_date || i.releaseDate).slice(0, 4)) || item.year || null;
+      const genres = text(i.genre).split(/[,/|]/).map((g) => g.trim()).filter(Boolean).slice(0, 3).join(' · ');
+      if (overview || backdrop || poster || rating || genres) {
+        value = {
+          overview: overview || null,
+          poster: /^https?:/i.test(poster) ? poster : null,
+          backdrop: /^https?:/i.test(backdrop) ? backdrop : null,
+          rating: rating ? Math.round(rating * 10) / 10 : null,
+          genres: genres || null,
+          year,
+          cast: text(i.cast || i.actors) || null,
+          source: 'servidor',
+        };
+      }
+    } catch {
+      value = null;
+    }
+    if (this._metaCache.size > 500) this._metaCache.clear();
+    this._metaCache.set(item.id, value);
+    return value;
   }
   async _api(action, params = '') {
     let lastError;
@@ -121,6 +161,7 @@ export class XtreamCatalog {
   }
 
   async loadVodCategory(catId) {
+    if (String(catId).startsWith('x:')) return []; // categoria da lista extra: já está em memória
     if (this._vodCache.has(catId)) return this._vodCache.get(catId);
     const streams = await this._api('get_vod_streams', `&category_id=${encodeURIComponent(catId)}`);
     const items = [];
@@ -154,6 +195,7 @@ export class XtreamCatalog {
   }
 
   async loadSeriesCategory(catId) {
+    if (String(catId).startsWith('x:')) return [];
     if (this._seriesCache.has(catId)) return this._seriesCache.get(catId);
     const seriesList = await this._api('get_series', `&category_id=${encodeURIComponent(catId)}`);
     const items = [];
@@ -183,7 +225,42 @@ export class XtreamCatalog {
     return items;
   }
 
+  /**
+   * Junta uma lista M3U sua (filmes/séries/canais "por fora" do provedor) ao catálogo Xtream.
+   * Os itens aparecem nas mesmas telas, em categorias próprias. Devolve quantos itens entraram.
+   */
+  addExtra(extra, label = 'Extras') {
+    let n = 0;
+    const put = (arr, catMap, it) => {
+      if (this.byId.has(it.id)) return;
+      const group = it.group && it.group !== 'Sem grupo' ? it.group : label;
+      it.group = group;
+      it.extra = true;
+      if (![...catMap.values()].includes(group)) catMap.set('x:' + group, group);
+      arr.push(it);
+      this.byId.set(it.id, it);
+      n++;
+    };
+    for (const it of extra.live) put(this.live, this.liveCatMap, it);
+    for (const it of extra.movies) put(this.movies, this.vodCatMap, it);
+    for (const it of extra.series) {
+      put(this.series, this.seriesCatMap, it);
+      for (const ep of it.episodes || []) this.byId.set(ep.id, ep);
+    }
+    this.extraCount = n;
+    return n;
+  }
+
   async getSeriesDetail(seriesId) {
+    const own = this.byId.get(seriesId);
+    if (own && own.extra) {
+      const seasons = new Map();
+      for (const ep of own.episodes) {
+        if (!seasons.has(ep.season)) seasons.set(ep.season, []);
+        seasons.get(ep.season).push(ep);
+      }
+      return { ...own, seasons: [...seasons.entries()].sort((a, b) => a[0] - b[0]).map(([season, episodes]) => ({ season, episodes })) };
+    }
     const rawId = seriesId.replace(/^s_/, '');
     if (this._seriesInfoCache.has(rawId)) return this._seriesInfoCache.get(rawId);
 
@@ -252,9 +329,10 @@ export class XtreamCatalog {
     return [];
   }
 
-  list(type, { group = null, q = '', offset = 0, limit = 60 } = {}) {
+  list(type, { group = null, q = '', offset = 0, limit = 60, exclude = null } = {}) {
     let arr = type === 'live' ? this.live : type === 'movie' ? this.movies : this.series;
     if (group) arr = arr.filter(i => i.group === group);
+    if (exclude) arr = arr.filter(i => !exclude(i));
     const tokens = norm(q).split(' ').filter(Boolean);
     if (tokens.length) {
       arr = arr.filter(i => {

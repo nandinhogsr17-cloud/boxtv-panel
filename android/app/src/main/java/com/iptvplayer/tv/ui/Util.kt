@@ -19,12 +19,20 @@ sealed interface Load<out T> {
 fun friendlyError(e: Throwable): String = when {
     e is ApiException && e.error == "invalid_panel_url" ->
         "Endereço do painel inválido. Confira panelUrl no gradle.properties."
+    e is java.net.UnknownHostException -> "Não encontrei o servidor. Confira o endereço e a internet."
+    e is java.net.SocketTimeoutException -> "O servidor demorou demais para responder. Tente de novo."
+    e is java.net.ConnectException -> "Não consegui conectar ao servidor (fora do ar ou porta errada)."
+    e is javax.net.ssl.SSLException -> "Falha de conexão segura. Tente o endereço com http:// ou confira o certificado."
+    e is java.io.IOException -> "Falha de rede. Verifique a internet e tente de novo."
+    e is IllegalArgumentException -> e.message ?: "Dados inválidos."
+    e is ApiException && e.error == "xtream_auth_failed" -> "Usuário ou senha não conferem. Confira com seu provedor."
+    e is ApiException && e.error == "no_default_server" -> "Digite o endereço do servidor Xtream (ex.: http://servidor.com:80)."
     e is ApiException && e.httpCode == 0 -> "Sem conexão com o servidor. Verifique a internet."
     e is ApiException && e.httpCode == 401 -> "Reconectando sua conta... Toque em Tentar de novo."
     e is ApiException && e.httpCode == 403 -> "Acesso não liberado para este dispositivo."
     e is ApiException && e.httpCode == 429 -> "Muitas tentativas. Aguarde um minuto."
     e is ApiException && e.httpCode == 502 ->
-        "A lista está sendo carregada na nuvem. Toque em Tentar de novo em instantes."
+        "O conteúdo está sendo carregado. Toque em Tentar de novo em instantes."
     else -> e.message ?: "Erro inesperado"
 }
 

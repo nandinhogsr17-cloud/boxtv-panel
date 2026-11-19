@@ -119,7 +119,7 @@ fun GamesScreen(onPlay: (PlayRequest) -> Unit) {
                             items(games) { game ->
                                 GameRow(game, showDate = filterMode == "all" || filterMode == "live") {
                                     if (game.channels.isEmpty()) {
-                                        notice = "Este jogo não está na sua lista de canais" +
+                                        notice = "Este jogo não está disponível nos seus canais" +
                                             (if (game.channelHint.isNotBlank()) " (passa em: ${game.channelHint})" else "") + "."
                                     } else {
                                         notice = null
@@ -186,7 +186,7 @@ private fun GameRow(game: Game, showDate: Boolean = false, onClick: () -> Unit) 
                 Spacer(Modifier.height(4.dp))
                 Text(
                     if (game.channels.isNotEmpty()) "📺 " + game.channels.joinToString("  ·  ") { it.title }
-                    else "Sem canal na sua lista",
+                    else "Sem canal disponível",
                     color = if (game.channels.isNotEmpty()) TextPrimary else TextSecondary,
                     fontSize = 13.sp,
                     maxLines = 1,
