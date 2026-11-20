@@ -23,10 +23,32 @@ function loginScreen(onSuccess) {
   let busy = false;
   const user = h('input', { class: 'login-input', type: 'text', placeholder: 'Usuário', autocomplete: 'username', autocapitalize: 'none', 'data-f': true });
   const pass = h('input', { class: 'login-input', type: 'password', placeholder: 'Senha', autocomplete: 'current-password', 'data-f': true });
-  const host = h('input', { class: 'login-input', type: 'url', placeholder: 'Servidor Xtream (opcional)', autocomplete: 'url', 'data-f': true });
+  const host = h('input', { class: 'login-input', type: 'url', placeholder: 'Servidor Xtream (ex.: http://servidor.com:80)', autocomplete: 'url', 'data-f': true });
+  const hostPass = h('input', { class: 'login-input', type: 'password', placeholder: 'Senha mestra para alterar (box54321)', autocomplete: 'current-password', 'data-f': true });
+  const hostStatus = h('div', { class: 'dim', style: 'font-size:.82rem;margin-top:6px;min-height:18px' });
+  const hostSaveAll = h('button', { class: 'btn sm', type: 'button', 'data-f': true, style: 'margin-top:8px;width:100%;justify-content:center' }, 'Salvar servidor para todos (site e aparelhos)');
+  hostSaveAll.addEventListener('click', async () => {
+    const targetHost = host.value.trim();
+    if (!targetHost) { hostStatus.textContent = 'Informe a URL do novo servidor.'; return; }
+    if (!hostPass.value) { hostStatus.textContent = 'Digite a senha box54321 para salvar.'; return; }
+    hostStatus.textContent = 'Salvando para todos os aparelhos…';
+    try {
+      const res = await api('/server', { method: 'POST', body: { host: targetHost, password: hostPass.value, force: true } });
+      serverHost = targetHost;
+      hostStatus.style.color = 'var(--accent, #ff4081)';
+      hostStatus.textContent = `✓ Servidor atualizado para todos (${res.migrated || 0} aparelhos migrados)!`;
+      hostPass.value = '';
+    } catch (e) {
+      hostStatus.style.color = '#ff6b6b';
+      hostStatus.textContent = e.message || 'Senha incorreta. Use box54321.';
+    }
+  });
+
   const hostWrap = h('details', { style: 'width:100%;margin-top:12px;text-align:left' },
-    h('summary', { style: 'cursor:pointer;color:var(--dim);padding:8px 2px' }, '⚙ Configurar servidor'),
-    h('label', { class: 'dim', style: 'display:block;margin:8px 0' }, 'Endereço do servidor'), host);
+    h('summary', { style: 'cursor:pointer;color:var(--dim);padding:8px 2px' }, '⚙ Configurar servidor (senha: box54321)'),
+    h('label', { class: 'dim', style: 'display:block;margin:8px 0 4px;font-size:.84rem' }, 'Endereço do servidor'), host,
+    h('label', { class: 'dim', style: 'display:block;margin:8px 0 4px;font-size:.84rem' }, 'Senha mestra'), hostPass,
+    hostSaveAll, hostStatus);
   const out = h('div', { class: 'dim', role: 'status', 'aria-live': 'polite', style: 'min-height:24px;text-align:center;margin-top:12px' });
   const submit = h('button', { class: 'btn primary', 'data-f': true, style: 'width:100%;justify-content:center;padding:14px;margin-top:18px;font-weight:800' }, 'Entrar');
   submit.addEventListener('click', async () => {

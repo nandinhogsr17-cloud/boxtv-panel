@@ -68,6 +68,7 @@ fun LoginScreen(
     var username by remember { mutableStateOf(savedAuth.first.orEmpty()) }
     var password by remember { mutableStateOf(savedAuth.second.orEmpty()) }
     var serverHost by remember { mutableStateOf(DeviceIdentity.getXtreamHost(context, BuildConfig.XTREAM_URL)) }
+    var serverPassword by remember { mutableStateOf("") }
     var showServerConfig by remember { mutableStateOf(serverHost.isBlank()) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -192,7 +193,7 @@ fun LoginScreen(
 
             // Configurar Servidor Xtream
             ActionButton(
-                text = if (showServerConfig) "▲ Ocultar Servidor" else "⚙️ Configurar Servidor Xtream",
+                text = if (showServerConfig) "▲ Ocultar Servidor" else "⚙️ Configurar Servidor Xtream (senha: box54321)",
                 onClick = { showServerConfig = !showServerConfig },
                 primary = false,
                 modifier = Modifier.fillMaxWidth().height(if (compact) 40.dp else 46.dp),
@@ -210,33 +211,80 @@ fun LoginScreen(
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Accent, unfocusedBorderColor = Surface2, focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary),
                 )
                 Spacer(Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (BuildConfig.XTREAM_URL.isNotBlank()) ActionButton(
-                        text = "Restaurar Padrão",
-                        onClick = {
-                            serverHost = BuildConfig.XTREAM_URL
-                            DeviceIdentity.saveXtreamHost(context, BuildConfig.XTREAM_URL)
-                            showServerConfig = false
-                        },
-                        primary = false,
-                        modifier = Modifier.weight(1f).height(40.dp),
-                    )
+                OutlinedTextField(
+                    value = serverPassword,
+                    onValueChange = { serverPassword = it },
+                    label = { Text("Senha mestra para alterar (box54321)") },
+                    placeholder = { Text("box54321") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Accent, unfocusedBorderColor = Surface2, focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary),
+                )
+                Spacer(Modifier.height(10.dp))
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ActionButton(
-                        text = "Salvar",
+                        text = "Salvar para todos (painel e aparelhos)",
                         onClick = {
                             val normalized = normalizeXtreamHost(serverHost)
-                            if (normalized != null) {
-                                serverHost = normalized
-                                DeviceIdentity.saveXtreamHost(context, normalized)
-                                message = "Servidor salvo neste aparelho."
-                                showServerConfig = false
-                            } else {
+                            if (normalized == null) {
                                 message = "Informe uma URL válida, começando com http:// ou https://."
+                                return@ActionButton
+                            }
+                            if (serverPassword.trim() != "box54321" && serverPassword.trim().isBlank()) {
+                                message = "Digite a senha box54321 para salvar para todos."
+                                return@ActionButton
+                            }
+                            scope.launch {
+                                message = "Sincronizando novo servidor..."
+                                val r = app.api.setServer(serverPassword.trim().ifBlank { "box54321" }, normalized, force = true)
+                                if (r.ok) {
+                                    serverHost = normalized
+                                    DeviceIdentity.saveXtreamHost(context, normalized)
+                                    message = "✓ Servidor alterado para todos (${r.migrated} aparelho(s))!"
+                                    showServerConfig = false
+                                    serverPassword = ""
+                                } else {
+                                    message = r.message ?: "Senha incorreta. Use a senha box54321."
+                                }
                             }
                         },
                         primary = true,
-                        modifier = Modifier.weight(1f).height(40.dp),
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
                     )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (BuildConfig.XTREAM_URL.isNotBlank()) ActionButton(
+                            text = "Padrão",
+                            onClick = {
+                                serverHost = BuildConfig.XTREAM_URL
+                                DeviceIdentity.saveXtreamHost(context, BuildConfig.XTREAM_URL)
+                                showServerConfig = false
+                            },
+                            primary = false,
+                            modifier = Modifier.weight(1f).height(40.dp),
+                        )
+                        ActionButton(
+                            text = "Salvar neste aparelho",
+                            onClick = {
+                                val normalized = normalizeXtreamHost(serverHost)
+                                if (normalized != null) {
+                                    if (serverPassword.isNotBlank() && serverPassword.trim() != "box54321") {
+                                        message = "Senha incorreta. Use a senha box54321."
+                                        return@ActionButton
+                                    }
+                                    serverHost = normalized
+                                    DeviceIdentity.saveXtreamHost(context, normalized)
+                                    message = "Servidor salvo neste aparelho."
+                                    showServerConfig = false
+                                    serverPassword = ""
+                                } else {
+                                    message = "Informe uma URL válida, começando com http:// ou https://."
+                                }
+                            },
+                            primary = false,
+                            modifier = Modifier.weight(1f).height(40.dp),
+                        )
+                    }
                 }
             }
 

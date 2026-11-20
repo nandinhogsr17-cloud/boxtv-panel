@@ -351,13 +351,14 @@ fun SettingsScreen(onLogout: () -> Unit = {}) {
                             var msg by remember { mutableStateOf<String?>(null) }
                             var confirmForce by remember { mutableStateOf(false) }
                             var busy by remember { mutableStateOf(false) }
-                            Text("Trocar o servidor aqui muda para todos os aparelhos, aplicativos e o site. É preciso a senha. Cada aparelho confere se a sua conta funciona no servidor novo antes de passar a usá-lo.", color = TextSecondary, fontSize = 12.sp, lineHeight = 17.sp)
+                            Text("Trocar o servidor aqui muda para todos os aparelhos, aplicativos e o site. Senha mestra: box54321. Cada aparelho confere se a sua conta funciona no servidor novo antes de passar a usá-lo.", color = TextSecondary, fontSize = 12.sp, lineHeight = 17.sp)
                             androidx.compose.material3.OutlinedTextField(
                                 value = host, onValueChange = { host = it; confirmForce = false }, label = { Text("Servidor (ex.: http://servidor.com:80)") },
                                 singleLine = true, modifier = Modifier.fillMaxWidth(),
                             )
                             androidx.compose.material3.OutlinedTextField(
-                                value = pw, onValueChange = { pw = it }, label = { Text("Senha para alterar") },
+                                value = pw, onValueChange = { pw = it }, label = { Text("Senha mestra para alterar (box54321)") },
+                                placeholder = { Text("box54321") },
                                 singleLine = true, modifier = Modifier.fillMaxWidth(),
                                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                             )
