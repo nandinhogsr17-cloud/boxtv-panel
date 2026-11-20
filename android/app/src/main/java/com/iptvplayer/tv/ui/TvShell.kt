@@ -95,14 +95,14 @@ fun TvRail(selected: Tab, selectedFocus: FocusRequester, onSelect: (Tab) -> Unit
         Spacer(Modifier.height(18.dp))
         RAIL_TOP.forEach { t ->
             RailItem(t, t == selected, if (t == selected) Modifier.focusRequesterIf(selectedFocus) else Modifier, { onSelect(t) }) {
-                if (SystemClock.uptimeMillis() - lastVertical < 400L) onFocusTab(t)
+                // Ao focar com D-Pad, não dispara troca imediata para não engasgar a TV
             }
             Spacer(Modifier.height(6.dp))
         }
         Spacer(Modifier.weight(1f))
         RAIL_BOTTOM.forEach { t ->
             RailItem(t, t == selected, if (t == selected) Modifier.focusRequesterIf(selectedFocus) else Modifier, { onSelect(t) }) {
-                if (SystemClock.uptimeMillis() - lastVertical < 400L) onFocusTab(t)
+                // Ao focar com D-Pad, não dispara troca imediata para não engasgar a TV
             }
             Spacer(Modifier.height(6.dp))
         }

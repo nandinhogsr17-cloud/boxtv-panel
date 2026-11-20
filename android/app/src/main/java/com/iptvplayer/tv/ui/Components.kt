@@ -76,13 +76,14 @@ fun FocusCard(
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) focusedScale else 1f, animationSpec = androidx.compose.animation.core.tween(110), label = "focusScale")
     Box(
         modifier
             .zIndex(if (focused) 1f else 0f)
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+                if (focused && focusedScale != 1f) {
+                    scaleX = focusedScale
+                    scaleY = focusedScale
+                }
             }
             .onFocusChanged { state ->
                 focused = state.isFocused
