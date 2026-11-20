@@ -662,7 +662,7 @@ private fun LiveEpgPanel(channelState: androidx.compose.runtime.State<Item?>, on
         }
         val epg by produceState<EpgData?>(null, channel.id) {
             value = null
-            delay(400) // só busca quando o foco para de passar de canal em canal
+            delay(150) // Resposta muito mais rápida ao navegar com o controle remoto
             value = try {
                 app.api.epg(channel.id).epg
             } catch (e: CancellationException) {
