@@ -233,7 +233,7 @@ fun MainShell(onLogout: () -> Unit = {}) {
                 TvTopBar(title = null, userInfo = userInfo)
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when (tab) {
-                        Tab.HOME -> HomeScreen(refresh, openItem, startPlay) { tab = Tab.GAMES }
+                        Tab.HOME -> HomeScreen(refresh, openItem, startPlay, onGames = { tab = Tab.GAMES })
                         Tab.LIVE -> BrowseScreen("live", openItem, startPlay)
                         Tab.MOVIES -> BrowseScreen("movie", openItem, startPlay)
                         Tab.SERIES -> BrowseScreen("series", openItem, startPlay)

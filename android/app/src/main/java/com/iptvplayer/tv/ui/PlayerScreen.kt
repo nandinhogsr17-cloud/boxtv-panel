@@ -46,7 +46,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.key.nativeKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -544,8 +543,19 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
                     Key.Zero, Key.One, Key.Two, Key.Three, Key.Four, Key.Five, Key.Six, Key.Seven, Key.Eight, Key.Nine,
                     Key.NumPad0, Key.NumPad1, Key.NumPad2, Key.NumPad3, Key.NumPad4, Key.NumPad5, Key.NumPad6, Key.NumPad7, Key.NumPad8, Key.NumPad9 -> {
                         if (current.isLive && numBuf.length < 4) {
-                            val kc = ev.nativeKeyEvent.keyCode
-                            val d: Char? = when (kc) { in 7..16 -> '0' + (kc - 7); in 144..153 -> '0' + (kc - 144); else -> null }
+                            val d: Char? = when (ev.key) {
+                                Key.Zero, Key.NumPad0 -> '0'
+                                Key.One, Key.NumPad1 -> '1'
+                                Key.Two, Key.NumPad2 -> '2'
+                                Key.Three, Key.NumPad3 -> '3'
+                                Key.Four, Key.NumPad4 -> '4'
+                                Key.Five, Key.NumPad5 -> '5'
+                                Key.Six, Key.NumPad6 -> '6'
+                                Key.Seven, Key.NumPad7 -> '7'
+                                Key.Eight, Key.NumPad8 -> '8'
+                                Key.Nine, Key.NumPad9 -> '9'
+                                else -> null
+                            }
                             if (d != null) numBuf += d
                         }
                         true
