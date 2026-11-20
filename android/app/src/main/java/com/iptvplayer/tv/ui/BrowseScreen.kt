@@ -146,6 +146,12 @@ fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> 
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
+                item { Pill("🕒 Recentes", selected = false, onClick = { /* Recentes */ }, modifier = Modifier.fillMaxWidth()) }
+                item { Pill("★ Favoritos", selected = false, onClick = { /* Favoritos */ }, modifier = Modifier.fillMaxWidth()) }
+                item { Pill("🔍 Pesquisar", selected = false, onClick = { /* Pesquisar */ }, modifier = Modifier.fillMaxWidth()) }
+                item {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(Color.White.copy(alpha = 0.08f)))
+                }
                 item { Pill("Todos", selected = group == null, onClick = { group = null }, modifier = Modifier.fillMaxWidth()) }
                 items(groups) { g ->
                     Pill(
@@ -337,28 +343,61 @@ fun ChannelRow(item: Item, onClick: () -> Unit, onToggleFavorite: () -> Unit, nu
             Modifier
                 .fillMaxWidth()
                 .background(if (focused) Surface2 else Surface1)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (number != null) {
                 Text(
-                    number.toString(),
+                    String.format(java.util.Locale.US, "%02d", number),
                     color = TextSecondary,
-                    fontSize = 12.sp,
+                    fontSize = 13.sp,
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    modifier = Modifier.width(38.dp),
+                    modifier = Modifier.width(36.dp),
                 )
             }
             Box(Modifier.size(56.dp, 38.dp)) { PosterBackground(item, fit = true) }
             Spacer(Modifier.width(12.dp))
-            Text(
-                item.title,
-                color = TextPrimary,
-                fontSize = 15.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+
+            val qualityRegex = Regex("""\b(4K|UHD|FHD|HD|SD)\b""", RegexOption.IGNORE_CASE)
+            val match = qualityRegex.find(item.title)
+            val cleanTitle = item.title.replace(qualityRegex, "").trim()
+            val qualityTag = match?.value?.uppercase()
+
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        cleanTitle.ifBlank { item.title },
+                        color = TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (qualityTag != null) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            qualityTag,
+                            color = TextSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(4.dp))
+                                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+                if (item.group.isNotBlank()) {
+                    Text(
+                        item.group,
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
             if (item.favorite) Text("★", color = Gold, fontSize = 16.sp)
         }
     }

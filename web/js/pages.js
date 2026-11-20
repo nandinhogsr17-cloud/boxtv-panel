@@ -313,20 +313,41 @@ export async function livePage(root, ctx) {
       }
       const cur = res.epg.current;
       const next = res.epg.next;
+      const upcoming = res.epg.upcoming || [];
       const startTime = cur.startMs ? new Date(cur.startMs).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
       const stopTime = cur.stopMs ? new Date(cur.stopMs).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
-      const timeStr = startTime && stopTime ? ` (${startTime} - ${stopTime})` : '';
+      const timeStr = startTime && stopTime ? ` · ${startTime} - ${stopTime}` : '';
+
+      const remainingMin = cur.stopMs ? Math.max(1, Math.round((cur.stopMs - Date.now()) / 60000)) : null;
+      const remainBadge = remainingMin ? h('span', { style: 'color:var(--accent);font-weight:700;font-size:0.8rem;float:right' }, `faltam ${remainingMin} min`) : null;
+
+      const aSeguirList = [next, ...upcoming].filter(Boolean).slice(0, 3);
 
       epgBox.replaceChildren(
-        h('div', { class: 'pv-now' },
-          h('div', { class: 'pv-now-tag' }, '🔴 NO AR'),
-          h('div', { class: 'pv-now-title' }, cur.title + timeStr),
-          cur.desc ? h('div', { class: 'pv-now-desc' }, cur.desc) : null,
-          cur.progress > 0 ? h('div', { class: 'pv-progress-bar' }, h('div', { class: 'pv-progress-fill', style: `width:${Math.round(cur.progress * 100)}%` })) : null
+        h('div', { class: 'pv-now', style: 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:12px;margin-top:10px' },
+          h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px' },
+            h('span', { class: 'pv-now-tag', style: 'color:#ff4081;font-weight:800;font-size:0.75rem;letter-spacing:1px' }, '● AGORA'),
+            remainBadge
+          ),
+          h('div', { class: 'pv-now-title', style: 'font-weight:700;font-size:1.05rem;color:#fff;margin-bottom:6px' }, cur.title),
+          h('div', { style: 'display:flex;justify-content:space-between;font-size:0.78rem;color:var(--dim);margin-bottom:4px' },
+            h('span', {}, startTime || '--:--'),
+            h('span', {}, stopTime || '--:--')
+          ),
+          h('div', { class: 'pv-progress-bar', style: 'height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;margin-bottom:8px' },
+            h('div', { class: 'pv-progress-fill', style: `height:100%;background:linear-gradient(90deg, #ff4081, #ffb300);width:${Math.round((cur.progress || 0.4) * 100)}%` })
+          ),
+          cur.desc ? h('div', { class: 'pv-now-desc', style: 'font-size:0.85rem;color:var(--dim);line-height:1.4' }, cur.desc) : null
         ),
-        next ? h('div', { class: 'pv-next' },
-          h('span', { class: 'pv-next-tag' }, 'A SEGUIR:'),
-          h('span', { class: 'pv-next-title' }, next.title)
+        aSeguirList.length ? h('div', { class: 'pv-next-box', style: 'background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);border-radius:12px;padding:12px;margin-top:10px' },
+          h('div', { style: 'color:var(--dim);font-weight:700;font-size:0.72rem;letter-spacing:1px;margin-bottom:8px' }, 'A SEGUIR'),
+          ...aSeguirList.map(prog => {
+            const pTime = prog.startMs ? new Date(prog.startMs).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+            return h('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.85rem' },
+              h('span', { style: 'color:var(--dim);margin-right:8px;font-family:monospace' }, pTime),
+              h('span', { style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eee' }, prog.title)
+            );
+          })
         ) : null
       );
     }).catch(() => {
@@ -355,6 +376,15 @@ export async function livePage(root, ctx) {
       } else {
         logo.append(h('div', { class: 'ch-ph' }, (it.title || '?').slice(0, 4)));
       }
+
+      const qualityMatch = it.title ? it.title.match(/\b(4K|UHD|FHD|HD|SD)\b/i) : null;
+      const cleanTitle = it.title ? it.title.replace(/\b(4K|UHD|FHD|HD|SD)\b/ig, '').trim() : '';
+      const qualityBadge = qualityMatch ? h('span', {
+        style: 'background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);padding:1px 6px;border-radius:4px;font-size:0.68rem;font-weight:700;color:#aaa;margin-left:6px;vertical-align:middle'
+      }, qualityMatch[1].toUpperCase()) : null;
+
+      const numStr = String(i + 1).padStart(2, '0');
+
       const el = h('button', {
         class: 'live-ch' + (it === currentItem ? ' active' : ''),
         'data-id': it.id,
@@ -363,9 +393,10 @@ export async function livePage(root, ctx) {
         onclick: () => selectChannel(it),
         ondblclick: () => ctx.play({ items, index: i }),
       },
+        h('span', { style: 'font-family:monospace;font-size:0.85rem;color:var(--dim);width:32px;text-align:left;flex-shrink:0' }, numStr),
         logo,
         h('div', { class: 'ch-info' },
-          h('div', { class: 'ch-name' }, it.title),
+          h('div', { class: 'ch-name' }, cleanTitle || it.title, qualityBadge),
           h('div', { class: 'ch-sub' }, it.group || '')),
         h('span', { class: 'play-ic' }, '▶'));
       chList.append(el);
@@ -397,6 +428,29 @@ export async function livePage(root, ctx) {
       }, label, count != null ? h('span', { class: 'cnt' }, String(count)) : null);
       return btn;
     };
+    catList.append(
+      h('div', { class: 'live-shortcuts', style: 'padding:8px 0;border-bottom:1px solid var(--line);margin-bottom:8px;display:flex;flex-direction:column;gap:4px' },
+        h('button', {
+          class: 'live-cat-btn', onclick: () => {
+            currentGroup = null;
+            applyFilter();
+          }
+        }, '🕒 Recentes'),
+        h('button', {
+          class: 'live-cat-btn', onclick: () => {
+            searchInput.value = '';
+            chList.replaceChildren();
+            const favs = allChannels.filter(x => x.favorite);
+            buildChannelList(favs);
+          }
+        }, '★ Favoritos'),
+        h('button', {
+          class: 'live-cat-btn', onclick: () => {
+            searchInput.focus();
+          }
+        }, '🔍 Pesquisar')
+      )
+    );
     catList.append(mk(null, '📋 Todos', allChannels.length));
     for (const g of allGroups) {
       const icon = /esporte|sport|futebol|foot/i.test(g.name) ? '⚽' :
@@ -652,9 +706,10 @@ export async function gamesPage(root, ctx) {
     const today = new Date();
 
     const buttons = [
+      { label: '🟢 Ao vivo agora', target: 'live', isLiveBtn: true },
       { label: '⚽ Hoje', target: todayStr },
-      { label: '🔴 Ao Vivo', target: 'live', isLiveBtn: true },
-      { label: '🔥 Todos da Semana', target: 'all' },
+      { label: '📅 Amanhã', target: getLocalDateStr(new Date(Date.now() + 86400000)) },
+      { label: '🏆 Todos da Semana', target: 'all' },
     ];
 
     // Ontem, Amanhã, +2, +3
@@ -843,7 +898,7 @@ function serverCard() {
   const hostIn = h('input', { type: 'text', placeholder: 'http://servidor.com:80', style: 'width:100%;margin:6px 0', autocomplete: 'off', spellcheck: 'false' });
   const passIn = h('input', { type: 'password', placeholder: 'Senha para alterar', style: 'width:100%;margin:6px 0', autocomplete: 'off' });
   const msg = h('div', { class: 'muted', style: 'min-height:20px;font-size:13px' }, '');
-  api('/server').then((s) => { hostIn.value = s.host || ''; msg.textContent = s.rev ? `Última troca: ${new Date(s.updatedAt).toLocaleString('pt-BR')}` : ''; }).catch(() => {});
+  api('/server').then((s) => { hostIn.value = s.host || ''; msg.textContent = s.rev ? `Última troca: ${new Date(s.updatedAt).toLocaleString('pt-BR')}` : ''; }).catch(() => { });
   const save = async (force) => {
     msg.textContent = 'Salvando…';
     try {
