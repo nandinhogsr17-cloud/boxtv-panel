@@ -63,6 +63,13 @@ img {
   display: block
 }
 
+img[src*="boxtv-logo"], .brand img, .login-logo {
+  max-width: 76px !important;
+  max-height: 76px !important;
+  object-fit: contain !important;
+  flex-shrink: 0;
+}
+
 /* ─── FOCO (TV / teclado) ─── */
 [data-f]:focus-visible,
 [data-f].focus {

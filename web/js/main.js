@@ -9,6 +9,14 @@ const NAME = CFG.appName || 'BoxTv';
 document.title = NAME;
 const app = document.getElementById('app');
 
+export function hideSplash() {
+  const s = document.getElementById('splash');
+  if (!s) return;
+  s.style.transition = 'opacity .4s ease';
+  s.style.opacity = '0';
+  setTimeout(() => { if (s && s.parentNode) s.remove(); }, 400);
+}
+
 // ====================================================================== Login Xtream (sem código de ativação e sem M3U)
 function loginScreen(onSuccess) {
   let serverHost = '';
@@ -57,6 +65,7 @@ function loginScreen(onSuccess) {
     h('div', { style: 'display:grid;gap:12px' }, user, pass), hostWrap, submit, out
   )));
   api('/activate/config').then((cfg) => { serverHost = cfg.serverHost || ''; host.value = serverHost; }).catch(() => {});
+  hideSplash();
   user.focus({ preventScroll: true });
 }
 
@@ -176,6 +185,7 @@ function shell() {
       expHint ? h('small', { style: 'color:var(--dim2);font-weight:500;font-size:.76rem' }, expHint) : null));
   main = h('main', {});
   clear(app).append(nav, main);
+  hideSplash();
   window.addEventListener('hashchange', render);
   render();
   // confere o acesso de tempos em tempos (vencimento/bloqueio no painel)
@@ -201,7 +211,10 @@ initNav({
 });
 
 (async () => {
+  hideSplash();
   status = await gate();
+  hideSplash();
   try { await ensureToken(); } catch { /* imagens http ficam sem capa */ }
   shell();
+  hideSplash();
 })();
