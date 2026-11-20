@@ -45,7 +45,8 @@ import {
   sendJson,
   readJson,
   parseBasic,
-  isHttpUrl, isAdultGroup } from './src/util.js';
+  isHttpUrl, isAdultGroup
+} from './src/util.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DAY_MS = 24 * 3600 * 1000;
@@ -942,7 +943,7 @@ export function createApp(options = {}) {
     if (!body.force) {
       try {
         const r = await fetch(`${origin}/player_api.php`, { signal: AbortSignal.timeout(8000), headers: { 'user-agent': 'VLC/3.0.20 LibVLC/3.0.20' } });
-        await r.arrayBuffer().catch(() => {});
+        await r.arrayBuffer().catch(() => { });
       } catch {
         throw new HttpError(422, 'unreachable', { message: 'Não consegui falar com esse servidor. Confira o endereço (ou confirme para salvar mesmo assim).' });
       }

@@ -228,14 +228,24 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
 
     // Pausa quando o app sai da tela (Início na TV, janela fechada no celular), exceto em imagem dentro de imagem
     DisposableEffect(exo) {
-        val owner = DeviceUtil.findActivity(context) as? androidx.lifecycle.LifecycleOwner
+        val act = DeviceUtil.findActivity(context)
+        val origOrientation = act?.requestedOrientation ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        if (UiMode.phone) {
+            act?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+        val owner = act as? androidx.lifecycle.LifecycleOwner
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
             // isInPictureInPictureMode só existe a partir do Android 7 (API 24); Fire Stick antigo é Android 5/6
-            val inPip = android.os.Build.VERSION.SDK_INT >= 24 && DeviceUtil.findActivity(context)?.isInPictureInPictureMode == true
+            val inPip = android.os.Build.VERSION.SDK_INT >= 24 && act?.isInPictureInPictureMode == true
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && !inPip) exo.pause()
         }
         owner?.lifecycle?.addObserver(obs)
-        onDispose { owner?.lifecycle?.removeObserver(obs) }
+        onDispose {
+            owner?.lifecycle?.removeObserver(obs)
+            if (UiMode.phone) {
+                act?.requestedOrientation = origOrientation
+            }
+        }
     }
 
     DisposableEffect(exo) {
@@ -783,17 +793,59 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
                     .padding(horizontal = 36.dp, vertical = 24.dp)
             ) {
                 if (current.isLive) {
-                    Text(
-                        "▲ ▼ trocar canal     MENU favoritar     VOLTAR sair",
-                        color = Color(0xFFCCCCCC),
-                        fontSize = 13.sp,
-                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "▲ ▼ trocar canal     MENU favoritar     VOLTAR sair",
+                            color = Color(0xFFCCCCCC),
+                            fontSize = 13.sp,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            ActionButton(
+                                text = "⏮ Canal Anterior",
+                                onClick = { step(-1) },
+                            )
+                            ActionButton(
+                                text = if (playing) "⏸ Pausar" else "▶ Reproduzir",
+                                onClick = { if (exo.isPlaying) exo.pause() else exo.play() },
+                                primary = true,
+                            )
+                            ActionButton(
+                                text = "Próximo Canal ⏭",
+                                onClick = { step(1) },
+                            )
+                        }
+                    }
                 } else {
                     ProgressBar(if (durMs > 0) posMs.toFloat() / durMs else 0f)
-                    Spacer(Modifier.height(6.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(fmtTime(posMs), color = Color.White, fontSize = 13.sp)
-                        Text("◀ ▶ ±${settings.skipSeconds} s     OK pausa", color = Color(0xFFCCCCCC), fontSize = 13.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            ActionButton(
+                                text = "⏮ -${settings.skipSeconds}s",
+                                onClick = {
+                                    val target = (exo.currentPosition - settings.skipSeconds * 1_000L).coerceAtLeast(0)
+                                    exo.seekTo(target)
+                                }
+                            )
+                            ActionButton(
+                                text = if (playing) "⏸ Pausar" else "▶ Reproduzir",
+                                onClick = { if (exo.isPlaying) exo.pause() else exo.play() },
+                                primary = true,
+                            )
+                            ActionButton(
+                                text = "+${settings.skipSeconds}s ⏭",
+                                onClick = {
+                                    val d = exo.duration
+                                    val target = exo.currentPosition + settings.skipSeconds * 1_000L
+                                    exo.seekTo(if (d > 0 && d != C.TIME_UNSET) target.coerceAtMost(d) else target)
+                                }
+                            )
+                        }
                         Text(if (durMs > 0) fmtTime(durMs) else "--:--", color = Color.White, fontSize = 13.sp)
                     }
                 }

@@ -118,7 +118,7 @@ data class EpgResponse(
 
 @Serializable
 data class Game(
-    val id: Long = 0,
+    val id: String = "",
     val date: String = "",
     val time: String = "",
     val competition: String = "",

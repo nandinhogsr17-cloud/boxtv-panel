@@ -129,6 +129,11 @@ fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> 
 
     if (type == "live" && isTv) {
         val focusedChannel = remember { mutableStateOf<Item?>(null) }
+        LaunchedEffect(items.size) {
+            if (focusedChannel.value == null && items.isNotEmpty()) {
+                focusedChannel.value = items.first()
+            }
+        }
         Row(
             Modifier
                 .fillMaxSize()
