@@ -277,7 +277,6 @@ export function openPlayer(req) {
   let closed = false;
   let startAt = 0;
   let currentSpeed = 1;
-  let currentSpeed = 1;
   let isSeeking = false;
 
   const video = h('video', { playsinline: true, autoplay: true, preload: 'auto' });

@@ -200,7 +200,7 @@ export function createApp(options = {}) {
     '.webmanifest': 'application/manifest+json',
   };
   const CSP =
-    "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; " +
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; " +
     "img-src 'self' data: https: blob:; media-src 'self' blob:; connect-src 'self' blob:; worker-src 'self' blob:; " +
     "frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
 
