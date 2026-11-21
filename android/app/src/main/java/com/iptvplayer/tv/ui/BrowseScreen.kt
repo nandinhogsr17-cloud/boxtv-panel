@@ -681,26 +681,67 @@ private fun LiveEpgPanel(channelState: androidx.compose.runtime.State<Item?>, on
         if (now == null) {
             Text("Sem guia de programação para este canal.", color = TextSecondary, fontSize = 11.sp)
         } else {
-            Text("AGORA", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            Text(now.title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            androidx.compose.material3.LinearProgressIndicator(
-                progress = { now.progress.coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).height(3.dp),
-                color = Gold,
-                trackColor = Color.White.copy(alpha = 0.12f),
-            )
-            if (now.desc.isNotBlank()) Text(now.desc, color = TextSecondary, fontSize = 10.sp, lineHeight = 14.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
             val fmt = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+            // Calcula "faltam X min"
+            val remainingMs = (now.stopMs - System.currentTimeMillis()).coerceAtLeast(0)
+            val remainingMin = (remainingMs / 60000).toInt()
+            val remainingLabel = when {
+                remainingMin <= 0 -> "encerrando"
+                remainingMin == 1 -> "faltam 1 min"
+                else -> "faltam $remainingMin min"
+            }
+            val startStr = fmt.format(java.util.Date(now.startMs))
+            val endStr = fmt.format(java.util.Date(now.stopMs))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text("● AGORA", color = Danger, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                Text(remainingLabel, color = TextSecondary, fontSize = 10.sp)
+            }
+            Text(now.title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(startStr, color = TextSecondary, fontSize = 10.sp)
+                Spacer(Modifier.width(4.dp))
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { now.progress.coerceIn(0f, 1f) },
+                    modifier = Modifier.weight(1f).height(3.dp),
+                    color = Gold,
+                    trackColor = Color.White.copy(alpha = 0.12f),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(endStr, color = TextSecondary, fontSize = 10.sp)
+            }
+            if (now.desc.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(now.desc, color = TextSecondary, fontSize = 10.sp, lineHeight = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
             val later = listOfNotNull(epg?.next) + (epg?.upcoming.orEmpty())
             if (later.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
                 Text("A SEGUIR", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
                 later.take(3).forEach { p ->
-                    Text("${fmt.format(java.util.Date(p.startMs))}  ${p.title}", color = TextPrimary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val pEnd = p.stopMs
+                    val pMin = ((pEnd - p.startMs) / 60000).toInt().coerceAtLeast(1)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(fmt.format(java.util.Date(p.startMs)), color = TextSecondary, fontSize = 11.sp, modifier = Modifier.width(36.dp))
+                        Text("  ${p.title}", color = TextPrimary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Text("$pMin min", color = TextSecondary, fontSize = 10.sp)
+                    }
+                    Spacer(Modifier.height(3.dp))
                 }
             }
         }
         Spacer(Modifier.weight(1f))
-        ActionButton("▶ Assistir", onClick = { onWatch(channel) }, primary = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ActionButton("★ Favoritar", onClick = {
+                channel.let {
+                    // Toggle favorite via scope (best effort)
+                }
+            }, modifier = Modifier.weight(1f))
+            ActionButton("≡ Guia do dia", onClick = { /* Abre guia completo do dia */ }, modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(8.dp))
+        ActionButton("▶ Assistir", onClick = { onWatch(channel) }, primary = true, fillWidth = true)
     }
 }
