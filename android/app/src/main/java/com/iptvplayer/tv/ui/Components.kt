@@ -26,6 +26,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -91,6 +96,12 @@ fun FocusCard(
             }
             .border(if (focused) 2.5.dp else 0.dp, if (focused) FocusBorderBrush else NoBorderBrush, shape)
             .clip(shape)
+            .onKeyEvent { ev ->
+                if ((ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter) && ev.type == KeyEventType.KeyUp) {
+                    onClick()
+                    true
+                } else false
+            }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

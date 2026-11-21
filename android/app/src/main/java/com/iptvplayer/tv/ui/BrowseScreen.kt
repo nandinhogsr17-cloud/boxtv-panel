@@ -1,11 +1,19 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.iptvplayer.tv.ui
 
+import android.view.ViewGroup
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.focusGroup
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.Brush
 import com.iptvplayer.tv.data.MetaResponse
 import kotlinx.coroutines.delay
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import com.iptvplayer.tv.data.EpgData
 import androidx.compose.foundation.clickable
@@ -39,6 +47,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -58,6 +67,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import com.iptvplayer.tv.IptvApp
 import com.iptvplayer.tv.data.GroupInfo
 import com.iptvplayer.tv.data.Item
@@ -129,16 +144,26 @@ fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> 
 
     if (type == "live" && isTv) {
         val focusedChannel = remember { mutableStateOf<Item?>(null) }
+        val firstChannelFocus = remember { FocusRequester() }
+
         LaunchedEffect(items.size) {
             if (focusedChannel.value == null && items.isNotEmpty()) {
                 focusedChannel.value = items.first()
             }
         }
+        LaunchedEffect(items.isNotEmpty()) {
+            if (items.isNotEmpty()) {
+                kotlinx.coroutines.delay(100)
+                runCatching { firstChannelFocus.requestFocus() }
+            }
+        }
+
         Row(
             Modifier
                 .fillMaxSize()
-                .padding(horizontal = 48.dp)
+                .padding(horizontal = 48.dp),
         ) {
+            // ─── Coluna Esquerda: Categorias ──────────────────────────────────
             LazyColumn(
                 Modifier
                     .width(240.dp)
@@ -163,10 +188,12 @@ fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> 
                 }
             }
             Spacer(Modifier.width(20.dp))
+
+            // ─── Coluna Central: Lista de canais ──────────────────────────────
             Box(
                 Modifier
                     .weight(1f)
-                    .fillMaxHeight()
+                    .fillMaxHeight(),
             ) {
                 if (items.isEmpty()) {
                     BrowseEmpty(error, loading) { attempt++ }
@@ -177,12 +204,14 @@ fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> 
                         contentPadding = PaddingValues(vertical = 8.dp),
                     ) {
                         itemsIndexed(items, key = { _, ch -> ch.id }, contentType = { _, _ -> "channel" }) { index, ch ->
+                            val isFirst = index == 0
                             ChannelRow(
                                 ch,
                                 onClick = { onPlay(PlayRequest(items.toList(), index)) },
                                 onToggleFavorite = { toggleFavorite(ch.id) },
                                 number = index + 1,
                                 onFocused = { focusedChannel.value = ch },
+                                modifier = if (isFirst) Modifier.focusRequester(firstChannelFocus) else Modifier,
                             )
                         }
                         item(key = "load-more:$type:${group.orEmpty()}") {
@@ -198,10 +227,15 @@ fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> 
                 }
             }
             Spacer(Modifier.width(16.dp))
-            LiveEpgPanel(focusedChannel) { ch ->
-                val idx = items.indexOfFirst { it.id == ch.id }
-                if (idx >= 0) onPlay(PlayRequest(items.toList(), idx))
-            }
+
+            // ─── Coluna Direita: Mini Player + EPG ───────────────────────────
+            LiveEpgPanel(
+                channelState = focusedChannel,
+                onWatch = { ch ->
+                    val idx = items.indexOfFirst { it.id == ch.id }
+                    if (idx >= 0) onPlay(PlayRequest(items.toList(), idx))
+                },
+            )
         }
     } else if (type == "live") {
         Column(Modifier.fillMaxSize()) {
@@ -318,14 +352,14 @@ private fun BrowseEmpty(error: String?, loading: Boolean, onRetry: () -> Unit) {
 }
 
 @Composable
-fun ChannelRow(item: Item, onClick: () -> Unit, onToggleFavorite: () -> Unit, number: Int? = null, onFocused: (() -> Unit)? = null) {
+fun ChannelRow(item: Item, onClick: () -> Unit, onToggleFavorite: () -> Unit, number: Int? = null, onFocused: (() -> Unit)? = null, modifier: Modifier = Modifier) {
     if (UiMode.phone) {
         PhoneChannelRow(item, onClick, onToggleFavorite, number)
         return
     }
     FocusCard(
         onClick,
-        Modifier
+        modifier
             .fillMaxWidth()
             .onFocusChanged { if (it.hasFocus) onFocused?.invoke() }
             .onKeyEvent { ev ->
@@ -640,13 +674,70 @@ private fun TvDetailPanel(focusedState: androidx.compose.runtime.State<Item?>, o
 }
 
 @Composable
-private fun LiveEpgPanel(channelState: androidx.compose.runtime.State<Item?>, onWatch: (Item) -> Unit) {
+private fun LiveEpgPanel(
+    channelState: androidx.compose.runtime.State<Item?>,
+    onWatch: (Item) -> Unit,
+) {
     val channel = channelState.value
-    val app = LocalContext.current.applicationContext as IptvApp
+    val context = LocalContext.current
+    val app = context.applicationContext as IptvApp
+    val settings = remember { com.iptvplayer.tv.data.AppPreferences.read(context) }
     val shape = RoundedCornerShape(18.dp)
+
+    // ── Mini ExoPlayer (compartilha a mesma configuração de stream do app) ──────
+    val previewPlayer = remember {
+        buildPlayer(context, settings).apply {
+            volume = 0f // mudo no preview
+            repeatMode = Player.REPEAT_MODE_ONE
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            previewPlayer.stop()
+            previewPlayer.release()
+        }
+    }
+
+    // Carrega o stream com debounce de 500ms para não engasgar durante navegação rápida
+    val previewUrl by produceState<String?>(null, channel?.id) {
+        value = null
+        if (channel?.url.isNullOrBlank()) return@produceState
+        delay(500)
+        value = channel?.url
+    }
+
+    LaunchedEffect(previewUrl) {
+        val u = previewUrl
+        if (!u.isNullOrBlank()) {
+            val mi = MediaItem.Builder()
+                .setUri(u)
+                .apply { if (u.contains(".m3u8", ignoreCase = true)) setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8) }
+                .build()
+            previewPlayer.setMediaItem(mi)
+            previewPlayer.prepare()
+            previewPlayer.playWhenReady = true
+        } else {
+            previewPlayer.stop()
+        }
+    }
+
+    // ── EPG ──────────────────────────────────────────────────────────────────
+    val epg by produceState<EpgData?>(null, channel?.id) {
+        value = null
+        if (channel == null) return@produceState
+        delay(150)
+        value = try {
+            app.api.epg(channel.id).epg
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     Column(
         Modifier
-            .width(250.dp)
+            .width(280.dp)
             .fillMaxHeight()
             .padding(vertical = 8.dp)
             .clip(shape)
@@ -660,29 +751,66 @@ private fun LiveEpgPanel(channelState: androidx.compose.runtime.State<Item?>, on
             }
             return@Column
         }
-        val epg by produceState<EpgData?>(null, channel.id) {
-            value = null
-            delay(150) // Resposta muito mais rápida ao navegar com o controle remoto
-            value = try {
-                app.api.epg(channel.id).epg
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                null
+
+        // ── Mini Player de Vídeo ─────────────────────────────────────────────
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.Black),
+        ) {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        player = previewPlayer
+                        useController = false
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        )
+                    }
+                },
+                update = { pv -> pv.player = previewPlayer },
+                modifier = Modifier.fillMaxSize(),
+            )
+            // "AO VIVO" badge vermelho no canto
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .background(Danger, RoundedCornerShape(5.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+                Text("● AO VIVO", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+            }
+            // "OK tela cheia" dica no canto inferior direito
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(5.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+                Text("OK tela cheia", color = Color.White.copy(alpha = 0.85f), fontSize = 9.sp)
+            }
+            // Poster como fallback enquanto o stream carrega
+            if (previewUrl == null) {
+                PosterBackground(channel, fit = true)
             }
         }
-        Box(Modifier.align(Alignment.CenterHorizontally).size(120.dp, 72.dp).clip(RoundedCornerShape(10.dp))) {
-            PosterBackground(channel, fit = true)
-        }
+
         Spacer(Modifier.height(10.dp))
-        Text(channel.title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(channel.title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(8.dp))
+
+        // ── EPG ─────────────────────────────────────────────────────────────
         val now = epg?.current
         if (now == null) {
             Text("Sem guia de programação para este canal.", color = TextSecondary, fontSize = 11.sp)
         } else {
             val fmt = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
-            // Calcula "faltam X min"
             val remainingMs = (now.stopMs - System.currentTimeMillis()).coerceAtLeast(0)
             val remainingMin = (remainingMs / 60000).toInt()
             val remainingLabel = when {
@@ -734,12 +862,8 @@ private fun LiveEpgPanel(channelState: androidx.compose.runtime.State<Item?>, on
         }
         Spacer(Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton("★ Favoritar", onClick = {
-                channel.let {
-                    // Toggle favorite via scope (best effort)
-                }
-            }, modifier = Modifier.weight(1f))
-            ActionButton("≡ Guia do dia", onClick = { /* Abre guia completo do dia */ }, modifier = Modifier.weight(1f))
+            ActionButton("★ Favoritar", onClick = { /* toggle fav */ }, modifier = Modifier.weight(1f))
+            ActionButton("≡ Guia do dia", onClick = { /* guia completo */ }, modifier = Modifier.weight(1f))
         }
         Spacer(Modifier.height(8.dp))
         ActionButton("▶ Assistir", onClick = { onWatch(channel) }, primary = true, fillWidth = true)

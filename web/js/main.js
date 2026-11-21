@@ -9,6 +9,60 @@ const NAME = CFG.appName || 'BoxTv';
 document.title = NAME;
 const app = document.getElementById('app');
 
+export const SKINS = [
+  { id: 'cyber', name: 'Cyber Cinema', icon: '⚡', desc: 'Neon Magenta, Violeta & Cyan' },
+  { id: 'emerald', name: 'Midnight Emerald', icon: '🟢', desc: 'Esmeralda & Obsidian Profundo' },
+  { id: 'gold', name: 'OLED Imperial Gold', icon: '👑', desc: 'Ouro Real & Preto Puro' },
+  { id: 'amethyst', name: 'Amethyst Neon', icon: '🔮', desc: 'Ametista & Violeta Galáctica' },
+];
+
+export function applySkin(skinId) {
+  const s = SKINS.find((x) => x.id === skinId) || SKINS[0];
+  document.documentElement.setAttribute('data-skin', s.id);
+  localStorage.setItem('boxtv_skin', s.id);
+  return s;
+}
+
+// Inicializa a skin imediatamente antes do carregamento da tela
+applySkin(localStorage.getItem('boxtv_skin') || 'cyber');
+
+function openSkinModal() {
+  const existing = document.getElementById('skin-modal');
+  if (existing) { existing.remove(); return; }
+  const curr = localStorage.getItem('boxtv_skin') || 'cyber';
+  const modal = h('div', { id: 'skin-modal', style: 'position:fixed;inset:0;background:rgba(0,0,0,0.78);backdrop-filter:blur(10px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px' },
+    h('div', { class: 'box', style: 'background:var(--card);border:1px solid var(--line);border-radius:20px;padding:24px;width:100%;max-width:440px;box-shadow:0 24px 60px rgba(0,0,0,0.9)' },
+      h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:18px' },
+        h('h3', { style: 'font-size:1.3rem;font-weight:900;color:var(--txt);display:flex;align-items:center;gap:8px' }, '🎨 Skins & Temas'),
+        h('button', { class: 'btn sm', onclick: () => modal.remove(), style: 'font-size:1.1rem;padding:4px 10px' }, '✕')
+      ),
+      h('div', { style: 'display:grid;gap:12px' },
+        SKINS.map((s) => {
+          const isAct = s.id === curr;
+          return h('button', {
+            class: 'skin-card' + (isAct ? ' active' : ''),
+            'data-f': true,
+            style: `display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:14px;text-align:left;border:2px solid ${isAct ? 'var(--accent)' : 'var(--line)'};background:${isAct ? 'rgba(255,255,255,0.08)' : 'var(--bg2)'};cursor:pointer;transition:transform .15s,border-color .2s`,
+            onclick: () => {
+              applySkin(s.id);
+              toast(`Skin aplicada: ${s.name}`);
+              modal.remove();
+            }
+          },
+            h('span', { style: 'font-size:1.9rem' }, s.icon),
+            h('div', { style: 'flex:1' },
+              h('div', { style: 'font-weight:800;font-size:1.05rem;color:var(--txt)' }, s.name),
+              h('div', { style: 'font-size:0.8rem;color:var(--dim)' }, s.desc)),
+            isAct ? h('span', { style: 'color:var(--accent);font-weight:900;font-size:1.25rem' }, '✓') : null
+          );
+        })
+      )
+    )
+  );
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  document.body.append(modal);
+}
+
 export function hideSplash() {
   const s = document.getElementById('splash');
   if (!s) return;
@@ -196,8 +250,13 @@ function shell() {
     ),
     TABS.map(([id, label]) => h('button', { class: 'pill', 'data-f': true, 'data-tab': id, onclick: () => go(id) }, label)),
     h('button', {
+      class: 'pill skin-btn', 'data-f': true, title: 'Personalizar Skin / Tema', 'aria-label': 'Skins e Temas',
+      style: 'margin-left:auto;padding:6px 14px;font-size:0.85rem;display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12)',
+      onclick: () => openSkinModal()
+    }, '🎨 Skin'),
+    h('button', {
       class: 'keybtn', 'data-f': true, title: `Usuário conectado: ${loggedUser}${expHint} (clique para sair)`, 'aria-label': 'Conta do usuário',
-      style: 'margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:var(--txt);font-size:.85rem',
+      style: 'margin-left:8px;display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:var(--txt);font-size:.85rem',
       onclick: () => {
         if (confirm('Deseja sair da conta?')) logout();
       }

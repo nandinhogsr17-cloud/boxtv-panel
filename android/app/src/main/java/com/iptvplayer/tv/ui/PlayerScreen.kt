@@ -84,7 +84,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private fun buildPlayer(context: Context, settings: AppSettings): ExoPlayer {
+internal fun buildPlayer(context: Context, settings: AppSettings): ExoPlayer {
     // OkHttp (e não o cliente padrão do Android) para o vídeo respeitar o DNS escolhido em Configurações
     val http = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(com.iptvplayer.tv.data.NetClients.client)
         .setUserAgent(BuildConfig.STREAM_UA)
