@@ -140,7 +140,7 @@ function loginScreen(onSuccess) {
     h('p', { class: 'dim', style: 'text-align:center;font-size:.9rem;margin:0 0 18px' }, 'Digite o usuário e a senha fornecidos pelo seu provedor.'),
     h('div', { style: 'display:grid;gap:12px' }, user, pass), hostWrap, submit, out
   )));
-  api('/activate/config').then((cfg) => { serverHost = cfg.serverHost || ''; host.value = serverHost; }).catch(() => {});
+  api('/activate/config').then((cfg) => { serverHost = cfg.serverHost || ''; host.value = serverHost; }).catch(() => { });
   hideSplash();
   user.focus({ preventScroll: true });
 }

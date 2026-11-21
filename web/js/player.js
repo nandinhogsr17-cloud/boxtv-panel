@@ -1,4 +1,5 @@
 // Player em tela cheia com M3U8 Player Site Kit: HLS (hls.js), TS ao vivo (mpegts.js) e MP4.
+// Reescrito completamente: autoplay imediato, controles avançados, visual moderno, Android TV.
 import { api, ApiError, proxyAbs, setToken } from './api.js';
 import { h, fmtTime, toast } from './dom.js';
 import { setScope } from './nav.js';
@@ -6,6 +7,7 @@ import { setScope } from './nav.js';
 const CFG = window.IPTV_CONFIG || {};
 const libs = {};
 
+/* ─────────────────────────── lib loader ─────────────────────────── */
 function loadScript(urls, globalName) {
   if (window[globalName]) return Promise.resolve(window[globalName]);
   if (libs[globalName]) return libs[globalName];
@@ -25,7 +27,7 @@ function loadScript(urls, globalName) {
 const loadHls = () => loadScript(CFG.hlsUrls || ['vendor/hls.min.js'], 'Hls');
 const loadMpegts = () => loadScript(CFG.mpegtsUrls || ['vendor/mpegts.js'], 'mpegts');
 
-/** Detecta o tipo real do stream pela URL e pelo kind retornado pelo servidor */
+/* ─────────────────────────── helpers ────────────────────────────── */
 function resolveKind(kind, url) {
   if (kind && kind !== 'unknown') return kind;
   const u = (url || '').toLowerCase().split('?')[0];
@@ -35,14 +37,236 @@ function resolveKind(kind, url) {
   return 'ts';
 }
 
+function fmt(secs) {
+  if (!Number.isFinite(secs) || secs < 0) return '00:00';
+  const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = Math.floor(secs % 60);
+  return h > 0
+    ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+/* ─────────────────────────── inline styles ──────────────────────── */
+function injectStyles() {
+  if (document.getElementById('bxtv-player-styles')) return;
+  const css = `
+/* ═══════════ BOXTV PLAYER ═══════════ */
+#bxtv-player {
+  position:fixed; inset:0; z-index:9999;
+  background:#000;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Inter','Poppins',system-ui,sans-serif;
+  opacity:0; transition:opacity .25s ease;
+}
+#bxtv-player.ready { opacity:1; }
+#bxtv-player video {
+  width:100%; height:100%; object-fit:contain; display:block;
+}
+
+/* ── overlay wrapper ── */
+#bxtv-player .bx-ov {
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; justify-content:space-between;
+  pointer-events:none;
+  opacity:1; transition:opacity .4s ease;
+}
+#bxtv-player.idle .bx-ov { opacity:0; }
+#bxtv-player .bx-ov * { pointer-events:auto; }
+
+/* ── top bar ── */
+#bxtv-player .bx-top {
+  padding:14px 18px 60px;
+  background:linear-gradient(to bottom,rgba(0,0,0,.85) 0%,transparent 100%);
+  display:flex; align-items:flex-start; gap:12px;
+}
+#bxtv-player .bx-top-info { flex:1; min-width:0; }
+#bxtv-player .bx-title {
+  font-family:'Poppins',sans-serif; font-size:1.1rem; font-weight:700;
+  color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+#bxtv-player .bx-sub {
+  font-size:.78rem; color:#ccc; margin-top:3px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  max-width:70vw;
+}
+#bxtv-player .bx-badge-live {
+  display:inline-flex; align-items:center; gap:5px;
+  background:#e53935; color:#fff; font-size:.7rem; font-weight:700;
+  padding:3px 8px; border-radius:4px; letter-spacing:.05em;
+  animation:bxPulse 1.5s ease-in-out infinite;
+}
+@keyframes bxPulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+
+/* ── bottom bar ── */
+#bxtv-player .bx-bot {
+  padding:50px 14px 10px;
+  background:linear-gradient(to top,rgba(0,0,0,.88) 0%,transparent 100%);
+}
+
+/* ── seek bar ── */
+#bxtv-player .bx-seek-wrap {
+  position:relative; height:18px; display:flex; align-items:center; cursor:pointer;
+  margin-bottom:4px;
+}
+#bxtv-player .bx-seek-track {
+  position:relative; width:100%; height:4px; background:rgba(255,255,255,.25);
+  border-radius:4px; overflow:hidden; transition:height .15s;
+}
+#bxtv-player .bx-seek-wrap:hover .bx-seek-track { height:6px; }
+#bxtv-player .bx-seek-fill {
+  position:absolute; left:0; top:0; height:100%;
+  background:linear-gradient(90deg,#7c3aed,#a855f7);
+  border-radius:4px; width:0%; transition:width .1s linear;
+  pointer-events:none;
+}
+#bxtv-player .bx-seek-thumb {
+  position:absolute; top:50%; width:14px; height:14px;
+  background:#a855f7; border-radius:50%; transform:translate(-50%,-50%) scale(0);
+  transition:transform .15s; pointer-events:none; left:0%;
+}
+#bxtv-player .bx-seek-wrap:hover .bx-seek-thumb { transform:translate(-50%,-50%) scale(1); }
+#bxtv-player .bx-seek-tooltip {
+  position:absolute; bottom:28px; transform:translateX(-50%);
+  background:rgba(0,0,0,.85); color:#fff; font-size:.72rem; padding:3px 7px;
+  border-radius:5px; white-space:nowrap; pointer-events:none;
+  display:none; left:0%;
+}
+#bxtv-player .bx-seek-wrap:hover .bx-seek-tooltip { display:block; }
+
+/* ── controls row ── */
+#bxtv-player .bx-ctl {
+  display:flex; align-items:center; gap:4px; flex-wrap:wrap;
+}
+#bxtv-player .bx-ib {
+  background:none; border:none; cursor:pointer;
+  color:#e0e0ff; font-size:1.1rem; padding:6px 8px; border-radius:8px;
+  line-height:1; transition:background .15s, color .15s, transform .1s;
+  flex-shrink:0;
+}
+#bxtv-player .bx-ib:hover { background:rgba(124,58,237,.35); color:#fff; transform:scale(1.12); }
+#bxtv-player .bx-ib:active { transform:scale(.95); }
+#bxtv-player .bx-ib.bx-active { color:#a855f7; }
+#bxtv-player .bx-spacer { flex:1; }
+#bxtv-player .bx-time {
+  font-size:.78rem; color:#ccc; white-space:nowrap; padding:0 4px; align-self:center;
+}
+
+/* ── volume ── */
+#bxtv-player .bx-vol-wrap {
+  position:relative; display:flex; align-items:center;
+}
+#bxtv-player .bx-vol-slider-wrap {
+  position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%);
+  background:rgba(10,10,20,.92); border:1px solid rgba(255,255,255,.12);
+  border-radius:10px; padding:10px 8px; display:flex; flex-direction:column;
+  align-items:center; gap:6px;
+  opacity:0; pointer-events:none; transition:opacity .2s;
+}
+#bxtv-player .bx-vol-wrap:hover .bx-vol-slider-wrap,
+#bxtv-player .bx-vol-slider-wrap:hover { opacity:1; pointer-events:auto; }
+#bxtv-player .bx-vol-pct { font-size:.7rem; color:#ccc; }
+#bxtv-player input[type=range].bx-vol-range {
+  -webkit-appearance:none; appearance:none;
+  writing-mode:vertical-lr; direction:rtl;
+  width:4px; height:80px; cursor:pointer;
+  background:transparent;
+}
+#bxtv-player input[type=range].bx-vol-range::-webkit-slider-runnable-track {
+  background:rgba(255,255,255,.2); border-radius:4px; width:4px;
+}
+#bxtv-player input[type=range].bx-vol-range::-webkit-slider-thumb {
+  -webkit-appearance:none; width:14px; height:14px;
+  background:#a855f7; border-radius:50%; margin-left:-5px;
+}
+#bxtv-player input[type=range].bx-vol-range::-moz-range-track {
+  background:rgba(255,255,255,.2); border-radius:4px; width:4px;
+}
+#bxtv-player input[type=range].bx-vol-range::-moz-range-thumb {
+  width:14px; height:14px; background:#a855f7; border:none; border-radius:50%;
+}
+
+/* ── popup menus (speed/quality) ── */
+#bxtv-player .bx-popup-btn {
+  position:relative; display:inline-flex;
+}
+#bxtv-player .bx-popup-menu {
+  position:absolute; bottom:calc(100% + 8px); right:0;
+  background:rgba(10,10,20,.95); border:1px solid rgba(255,255,255,.12);
+  border-radius:10px; overflow:hidden; min-width:110px;
+  display:none; flex-direction:column;
+  box-shadow:0 8px 32px rgba(0,0,0,.7);
+}
+#bxtv-player .bx-popup-menu.open { display:flex; }
+#bxtv-player .bx-popup-menu button {
+  background:none; border:none; color:#e0e0ff; padding:9px 16px;
+  font-size:.82rem; text-align:left; cursor:pointer; transition:background .12s;
+}
+#bxtv-player .bx-popup-menu button:hover { background:rgba(124,58,237,.35); }
+#bxtv-player .bx-popup-menu button.selected { color:#a855f7; font-weight:600; }
+
+/* ── spinner ── */
+#bxtv-player .bx-spin-wrap {
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  pointer-events:none;
+}
+#bxtv-player .bx-spinner {
+  width:52px; height:52px; position:relative;
+}
+#bxtv-player .bx-spinner::before,
+#bxtv-player .bx-spinner::after {
+  content:''; position:absolute; border-radius:50%; border:3px solid transparent;
+}
+#bxtv-player .bx-spinner::before {
+  inset:0; border-top-color:#7c3aed; animation:bxSpin1 .9s linear infinite;
+}
+#bxtv-player .bx-spinner::after {
+  inset:8px; border-bottom-color:#a855f7; animation:bxSpin2 .7s linear infinite reverse;
+}
+@keyframes bxSpin1 { to { transform:rotate(360deg) } }
+@keyframes bxSpin2 { to { transform:rotate(360deg) } }
+
+/* ── autoplay-blocked overlay ── */
+#bxtv-player .bx-play-overlay {
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.55);
+}
+#bxtv-player .bx-play-overlay button {
+  background:linear-gradient(135deg,#7c3aed,#a855f7);
+  border:none; color:#fff; font-size:1.2rem; font-weight:700;
+  padding:16px 36px; border-radius:14px; cursor:pointer;
+  box-shadow:0 8px 32px rgba(124,58,237,.5);
+  transition:transform .15s, box-shadow .15s;
+}
+#bxtv-player .bx-play-overlay button:hover {
+  transform:scale(1.06); box-shadow:0 12px 40px rgba(124,58,237,.7);
+}
+
+/* ── close button ── */
+#bxtv-player .bx-close {
+  background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.18);
+  color:#fff; font-size:1.1rem; width:36px; height:36px;
+  border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  flex-shrink:0; transition:background .15s, transform .1s;
+}
+#bxtv-player .bx-close:hover { background:rgba(255,60,60,.5); transform:scale(1.12); }
+`;
+  const style = document.createElement('style');
+  style.id = 'bxtv-player-styles';
+  style.textContent = css;
+  document.head.append(style);
+}
+
+/* ─────────────────────────── state ──────────────────────────────── */
 let current = null;
 export const playerOpen = () => !!current;
 
+/* ─────────────────────────── main export ────────────────────────── */
 /**
  * @param {{items:object[], index:number, heading?:string, onClose?:()=>void}} req
  */
 export function openPlayer(req) {
   if (current) current.close();
+  injectStyles();
+
   const items = req.items;
   let idx = Math.max(0, Math.min(req.index || 0, items.length - 1));
   let gen = 0;
@@ -53,6 +277,8 @@ export function openPlayer(req) {
   let closed = false;
   let startAt = 0;
   let currentSpeed = 1;
+  let currentSpeed = 1;
+  let isSeeking = false;
 
   const video = h('video', { playsinline: true, autoplay: true, preload: 'auto' });
   const titleB = h('b', {}, '');
@@ -151,11 +377,13 @@ export function openPlayer(req) {
   document.body.append(el);
   document.body.style.overflow = 'hidden';
   setScope(el);
+  requestAnimationFrame(() => el.classList.add('ready')); // fade-in
 
-  // ---------------------------------------------------------------- interface
+  /* ═══════════════════════ interface helpers ══════════════════════ */
   const cur = () => items[idx];
-  function status(node) { centerBox.replaceChildren(...(node ? [node] : [])); }
-  const busy = () => status(h('div', { class: 'spin' }));
+
+  function showSpin(on) { spinWrap.style.display = on ? 'flex' : 'none'; }
+
   function showUi() {
     el.classList.remove('idle');
     clearTimeout(idleTimer);
@@ -164,30 +392,61 @@ export function openPlayer(req) {
 
   function paint() {
     const it = cur();
-    titleB.textContent = it.title;
-    titleS.textContent = live ? 'AO VIVO' : req.heading || '';
+    titleEl.textContent = it.title || '';
+
+    // synopsis / metadata (uses description/overview/plot from meta.js fallback)
+    const synopsis = it.overview || it.description || it.plot || '';
+    if (!live && synopsis) {
+      subEl.textContent = synopsis.length > 120 ? synopsis.slice(0, 120) + '…' : synopsis;
+    } else if (live) {
+      subEl.textContent = '';
+    } else {
+      subEl.textContent = req.heading || '';
+    }
+
+    // Live badge
+    if (badgeLive.parentNode) badgeLive.remove();
+    if (live) subEl.prepend(badgeLive);
+
     bFav.textContent = it.favorite ? '★' : '☆';
-    bPrev.style.display = bNext.style.display = items.length > 1 ? '' : 'none';
-    seek.style.display = bBack.style.display = bFwd.style.display = timeEl.style.display = live ? 'none' : '';
+    const hasMultiple = items.length > 1;
+    bPrev.style.display = bNext.style.display = hasMultiple ? '' : 'none';
     bSpeed.style.display = live ? 'none' : '';
     liveBadge.style.display = live ? 'inline-block' : 'none';
 
+    // Hide seek controls for live
+    const vodOnly = [seekWrap, bBack10, bFwd10, bBack30, bFwd30, timeEl, bSpeedWrap];
+    vodOnly.forEach(el => { el.style.display = live ? 'none' : ''; });
+
+    // EPG for live
     if (live) {
       api('/epg?id=' + encodeURIComponent(it.id)).then((r) => {
         if (cur() !== it || !r?.epg?.current) return;
         const curProg = r.epg.current;
         const st = curProg.startMs ? new Date(curProg.startMs).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
         const en = curProg.stopMs ? new Date(curProg.stopMs).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
-        titleS.textContent = `🔴 No ar: ${curProg.title}${st && en ? ` (${st} - ${en})` : ''}` + (r.epg.next?.title ? `  ·  A seguir: ${r.epg.next.title}` : '');
+        const prog = `  🔴 ${curProg.title}${st && en ? ` (${st}–${en})` : ''}`;
+        const next = r.epg.next?.title ? `  ·  A seguir: ${r.epg.next.title}` : '';
+        subEl.textContent = prog + next;
+        subEl.prepend(badgeLive);
       }).catch(() => { });
     }
   }
 
   function tick() {
-    if (live) return;
+    if (live || isSeeking) return;
     const d = video.duration;
-    timeEl.textContent = Number.isFinite(d) ? `${fmtTime(video.currentTime * 1000)} / ${fmtTime(d * 1000)}` : fmtTime(video.currentTime * 1000);
-    seekFill.style.width = Number.isFinite(d) && d > 0 ? `${(video.currentTime / d) * 100}%` : '0%';
+    const cur_ = video.currentTime;
+    if (Number.isFinite(d) && d > 0) {
+      const pct = (cur_ / d) * 100;
+      seekFill.style.width = pct + '%';
+      seekThumb.style.left = pct + '%';
+      timeEl.textContent = `${fmt(cur_)} / ${fmt(d)}`;
+    } else {
+      seekFill.style.width = '0%';
+      seekThumb.style.left = '0%';
+      timeEl.textContent = fmt(cur_);
+    }
 
     // Atualiza barra de buffer
     if (Number.isFinite(d) && d > 0 && video.buffered.length > 0) {
@@ -266,8 +525,13 @@ export function openPlayer(req) {
     menuModal.style.display = 'block';
   }
 
-  // ---------------------------------------------------------------- ações
-  function toggle() { if (video.paused) video.play().catch(() => { }); else video.pause(); showUi(); }
+  /* ═══════════════════════ actions ═══════════════════════════════ */
+  function toggle() {
+    if (video.paused) video.play().catch(() => { });
+    else video.pause();
+    showUi();
+  }
+
   function skip(sec) {
     if (live || !Number.isFinite(video.duration)) return;
     video.currentTime = Math.max(0, Math.min(video.duration - 1, video.currentTime + sec));
@@ -276,6 +540,7 @@ export function openPlayer(req) {
     setTimeout(() => { rip.style.opacity = '0'; }, 500);
     tick(); showUi();
   }
+
   function step(dir) {
     if (items.length < 2) return;
     saveProgress();
@@ -283,10 +548,12 @@ export function openPlayer(req) {
     retries = 0;
     start();
   }
+
   function fullscreen() {
-    if (document.fullscreenElement) document.exitFullscreen?.();
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => { });
     else (el.requestFullscreen?.() || Promise.resolve()).catch(() => { });
   }
+
   async function toggleFav() {
     const it = cur();
     try {
@@ -297,6 +564,7 @@ export function openPlayer(req) {
       toast(it.favorite ? 'Adicionado aos favoritos' : 'Removido dos favoritos');
     } catch { toast('Não foi possível favoritar'); }
   }
+
   function saveProgress() {
     const it = cur();
     if (live || !it || !Number.isFinite(video.duration) || video.duration < 1) return;
@@ -308,7 +576,38 @@ export function openPlayer(req) {
   // Salva o progresso automaticamente a cada 5 segundos
   saveTimer = setInterval(saveProgress, 5000);
 
-  // ---------------------------------------------------------------- carregar
+  seekWrap.addEventListener('pointermove', (e) => {
+    if (!Number.isFinite(video.duration)) return;
+    const pct = seekPct(e);
+    seekTip.textContent = fmt(pct * video.duration);
+    seekTip.style.left = (pct * 100) + '%';
+  });
+
+  seekWrap.addEventListener('pointerdown', (e) => {
+    isSeeking = true;
+    seekWrap.setPointerCapture(e.pointerId);
+    const move = (ev) => {
+      const pct = seekPct(ev);
+      seekFill.style.width = (pct * 100) + '%';
+      seekThumb.style.left = (pct * 100) + '%';
+      if (Number.isFinite(video.duration)) {
+        seekTip.textContent = fmt(pct * video.duration);
+        seekTip.style.left = (pct * 100) + '%';
+      }
+    };
+    const up = (ev) => {
+      isSeeking = false;
+      if (Number.isFinite(video.duration)) video.currentTime = seekPct(ev) * video.duration;
+      tick();
+      seekWrap.removeEventListener('pointermove', move);
+      seekWrap.removeEventListener('pointerup', up);
+    };
+    seekWrap.addEventListener('pointermove', move);
+    seekWrap.addEventListener('pointerup', up);
+    move(e);
+  });
+
+  /* ═══════════════════════ stream loading ═════════════════════════ */
   function teardown() {
     try { hls?.destroy(); } catch { }
     try { mp?.pause(); mp?.unload(); mp?.detachMediaElement(); mp?.destroy(); } catch { }
@@ -321,23 +620,38 @@ export function openPlayer(req) {
   }
 
   function fail(msg, canRetry = true) {
-    status(h('div', {},
-      h('div', { class: 'err', style: 'font-size:1.1rem;margin-bottom:12px' }, msg),
-      h('div', { class: 'btns', style: 'justify-content:center' },
-        canRetry ? h('button', { class: 'btn primary', onclick: () => { retries = 0; start(); } }, 'Tentar de novo') : null,
-        h('button', { class: 'btn', onclick: () => close() }, 'Fechar'))));
+    showSpin(false);
+    playOverlay.style.display = 'none';
+    const wrap = h('div', { style: 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;background:rgba(0,0,0,.7)' },
+      h('div', { style: 'font-size:1rem;color:#ffdede;max-width:380px;line-height:1.5' }, msg),
+      h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;justify-content:center' },
+        ...(canRetry ? [(() => {
+          const b = h('button', { style: 'background:linear-gradient(135deg,#7c3aed,#a855f7);border:none;color:#fff;padding:10px 24px;border-radius:10px;cursor:pointer;font-size:.9rem;font-weight:600' }, 'Tentar de novo');
+          b.onclick = () => { wrap.remove(); retries = 0; start(); };
+          return b;
+        })()] : []),
+        (() => {
+          const b = h('button', { style: 'background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;padding:10px 24px;border-radius:10px;cursor:pointer;font-size:.9rem' }, 'Fechar');
+          b.onclick = () => close();
+          return b;
+        })()
+      )
+    );
+    el.append(wrap);
     el.classList.remove('idle');
   }
 
   function reconnect(reason) {
     if (closed) return;
-    if (live && retries < 5) {
+    const maxRetries = 3;
+    if (live && retries < maxRetries) {
       retries++;
-      busy();
+      showSpin(true);
+      const delay = [2000, 4000, 8000][retries - 1] || 8000;
       const my = gen;
-      setTimeout(() => { if (!closed && my === gen) start(true); }, 1200 * retries);
+      setTimeout(() => { if (!closed && my === gen) start(true); }, delay);
     } else {
-      failWithDiag(reason || 'Não foi possível reproduzir.');
+      fail(reason || 'Não foi possível reproduzir.');
     }
   }
 
@@ -365,9 +679,13 @@ export function openPlayer(req) {
     live = it.type === 'live';
     paint();
     tick();
-    if (!isRetry) busy();
+    playOverlay.style.display = 'none';
+    if (!isRetry) showSpin(true);
     teardown();
-    startAt = !live && it.positionMs > 10000 && it.durationMs > 0 && it.positionMs / it.durationMs < 0.95 ? it.positionMs / 1000 : 0;
+
+    startAt = !live && it.positionMs > 10000 && it.durationMs > 0 && it.positionMs / it.durationMs < 0.95
+      ? it.positionMs / 1000 : 0;
+
     let info;
     try {
       info = await api('/web/play?id=' + encodeURIComponent(it.id));
@@ -378,9 +696,11 @@ export function openPlayer(req) {
       return reconnect('Sem conexão com o painel.');
     }
     if (closed || my !== gen) return;
+
     kind = resolveKind(info.kind, it.url);
     if (info.token) setToken(info.token);
     const src = proxyAbs(info.src);
+
     try {
       if (kind === 'hls') await attachHls(src, my);
       else if (kind === 'ts') await attachTs(src, my);
@@ -388,7 +708,7 @@ export function openPlayer(req) {
         video.src = src;
       } else {
         if (live) await attachTs(src, my).catch(() => attachHls(src, my));
-        else video.src = src;
+        else { video.src = src; video.load(); }
       }
       if (closed || my !== gen) return;
       const p = video.play();
@@ -408,6 +728,7 @@ export function openPlayer(req) {
     }
   }
 
+  /* ── HLS.js ── */
   async function attachHls(src, my) {
     const native = video.canPlayType('application/vnd.apple.mpegurl');
     const Hls = await loadHls().catch(() => null);
@@ -463,6 +784,7 @@ export function openPlayer(req) {
     hls.attachMedia(video);
   }
 
+  /* ── mpegts.js ── */
   async function attachTs(src, my) {
     const mpegts = await loadMpegts();
     if (closed || my !== gen) return;
@@ -470,20 +792,17 @@ export function openPlayer(req) {
     mp = mpegts.createPlayer(
       { type: 'mpegts', isLive: live, url: src },
       {
-        enableWorker: false,
-        lazyLoad: false,
-        enableStashBuffer: true,
-        stashInitialSize: 384 * 1024,
-        liveBufferLatencyChasing: false,
-        autoCleanupSourceBuffer: true,
+        enableWorker: false, lazyLoad: false, enableStashBuffer: true,
+        stashInitialSize: 384 * 1024, liveBufferLatencyChasing: false, autoCleanupSourceBuffer: true
       }
     );
     mp.on(mpegts.Events.ERROR, () => { if (!closed && my === gen) reconnect('A conexão com o canal caiu.'); });
     mp.attachMediaElement(video);
     mp.load();
+    try { mp.play(); } catch { }
   }
 
-  // ---------------------------------------------------------------- eventos do vídeo
+  /* ═══════════════════════ video events ══════════════════════════ */
   video.addEventListener('loadedmetadata', () => {
     if (startAt > 0 && Number.isFinite(video.duration)) {
       try {
@@ -492,12 +811,17 @@ export function openPlayer(req) {
       } catch { }
     }
   });
-  video.addEventListener('playing', () => { status(null); retries = 0; bPlay.textContent = '⏸'; showUi(); });
+  video.addEventListener('playing', () => { showSpin(false); playOverlay.style.display = 'none'; retries = 0; bPlay.textContent = '⏸'; showUi(); });
   video.addEventListener('pause', () => { bPlay.textContent = '▶'; el.classList.remove('idle'); saveProgress(); });
-  video.addEventListener('waiting', () => { if (!video.paused) busy(); });
-  video.addEventListener('canplay', () => { if (!video.paused) status(null); });
+  video.addEventListener('waiting', () => { if (!video.paused) showSpin(true); });
+  video.addEventListener('canplay', () => { if (!video.paused) showSpin(false); });
   video.addEventListener('timeupdate', tick);
   video.addEventListener('durationchange', tick);
+  video.addEventListener('volumechange', () => {
+    volRange.value = video.muted ? '0' : String(video.volume);
+    volPct.textContent = video.muted ? '0%' : Math.round(video.volume * 100) + '%';
+    updateVolIcon();
+  });
   video.addEventListener('ended', () => {
     if (live) return reconnect('A transmissão terminou.');
     const it = cur();
@@ -577,17 +901,32 @@ export function openPlayer(req) {
     else if (k === 'p' || k === 'P') bPip.click();
     else if (k === 'ContextMenu' || k === 'MediaTrackNext') { if (k === 'MediaTrackNext') step(1); else toggleFav(); }
     else if (k === 'MediaTrackPrevious') step(-1);
+    else if (k === 'ContextMenu') toggleFav();
+    else if (k === 'ArrowUp' || k === 'ChannelUp' || k === 'PageUp') {
+      if (live || items.length > 1) step(-1); else { video.volume = Math.min(1, video.volume + 0.1); }
+    }
+    else if (k === 'ArrowDown' || k === 'ChannelDown' || k === 'PageDown') {
+      if (live || items.length > 1) step(1); else { video.volume = Math.max(0, video.volume - 0.1); }
+    }
+    // Number keys 1-9: jump to % of content (VOD only)
+    else if (!live && /^[1-9]$/.test(k) && Number.isFinite(video.duration)) {
+      video.currentTime = (parseInt(k) / 10) * video.duration;
+      tick();
+    }
     else handled = false;
+
     if (handled) { e.preventDefault(); e.stopPropagation(); showUi(); }
   }
 
   document.addEventListener('keydown', onKey, true);
-  ['mousemove', 'pointerdown', 'touchstart'].forEach((ev) => el.addEventListener(ev, showUi, { passive: true }));
+  ['mousemove', 'pointerdown', 'touchstart'].forEach(ev => el.addEventListener(ev, showUi, { passive: true }));
 
+  /* ═══════════════════════ periodic save ═════════════════════════ */
   saveTimer = setInterval(() => { if (!video.paused) saveProgress(); }, 15000);
   const onHide = () => { if (document.visibilityState === 'hidden') saveProgress(); };
   document.addEventListener('visibilitychange', onHide);
 
+  /* ═══════════════════════ close ═════════════════════════════════ */
   function close() {
     if (closed) return;
     closed = true;
@@ -597,11 +936,15 @@ export function openPlayer(req) {
     document.removeEventListener('visibilitychange', onHide);
     saveProgress();
     teardown();
-    el.remove();
+    if (document.pictureInPictureElement) document.exitPictureInPicture?.().catch(() => { });
+    el.style.opacity = '0';
+    el.style.transition = 'opacity .25s ease';
+    setTimeout(() => { el.remove(); }, 260);
     document.body.style.overflow = '';
     current = null;
     req.onClose?.();
   }
+  /* ═══════════════════════ kick off ══════════════════════════════ */
   current = { close };
   start();
 }
