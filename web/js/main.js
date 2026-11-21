@@ -133,7 +133,18 @@ function loginScreen(onSuccess) {
     }
   });
   clear(app).append(h('div', { class: 'act' }, h('div', { class: 'box', style: 'max-width:460px;padding:30px 24px;border-radius:22px;border:1px solid rgba(255,255,255,.12);background:rgba(18,18,24,.97);box-shadow:0 12px 40px rgba(0,0,0,.6)' },
-    h('div', { style: 'display:flex;justify-content:center;margin-bottom:14px' }, h('img', { src: 'boxtv-logo.svg', alt: 'BoxTv', style: 'width:76px;height:76px;border-radius:20px;box-shadow:0 8px 30px rgba(179,77,255,.28)' })),
+    h('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:14px' },
+      h('div', { style: 'width:50px' }),
+      h('img', { src: 'boxtv-logo.svg', alt: 'BoxTv', style: 'width:76px;height:76px;border-radius:20px;box-shadow:0 8px 30px rgba(179,77,255,.28)' }),
+      h('button', {
+        class: 'btn sm skin-btn',
+        type: 'button',
+        'data-f': true,
+        title: 'Personalizar Skin / Tema',
+        onclick: () => openSkinModal(),
+        style: 'padding:4px 10px;font-size:0.8rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15)'
+      }, '🎨 Skin')
+    ),
     h('h1', { style: 'font-size:1.9rem;margin:0 0 6px;text-align:center;font-weight:900;color:#fff' }, 'BoxTv ⚡'),
     h('p', { style: 'margin:0 0 22px;text-align:center;font-size:.82rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em' }, 'O MELHOR DO ENTRETENIMENTO · CANAIS AO VIVO · FILMES · SÉRIES · JOGOS'),
     h('h2', { style: 'text-align:center;margin:0 0 8px' }, 'Entrar com Xtream'),
