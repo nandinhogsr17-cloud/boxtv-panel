@@ -503,7 +503,7 @@ fun PlayerScreen(request: PlayRequest, onClose: () -> Unit) {
                 if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 uiTick++
                 when (ev.key) {
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.MediaPlayPause -> {
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.MediaPlayPause, Key.ButtonA, Key.Spacebar -> {
                         if (casting) castContext?.sessionManager?.currentCastSession?.remoteMediaClient?.togglePlayback()
                         else if (exo.isPlaying) exo.pause() else exo.play()
                         true

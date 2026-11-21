@@ -234,9 +234,9 @@ fun MainShell(onLogout: () -> Unit = {}) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when (tab) {
                         Tab.HOME -> HomeScreen(refresh, openItem, startPlay, onGames = { tab = Tab.GAMES })
-                        Tab.LIVE -> BrowseScreen("live", openItem, startPlay)
-                        Tab.MOVIES -> BrowseScreen("movie", openItem, startPlay)
-                        Tab.SERIES -> BrowseScreen("series", openItem, startPlay)
+                        Tab.LIVE -> BrowseScreen("live", openItem, startPlay, onSearch = { tab = Tab.SEARCH })
+                        Tab.MOVIES -> BrowseScreen("movie", openItem, startPlay, onSearch = { tab = Tab.SEARCH })
+                        Tab.SERIES -> BrowseScreen("series", openItem, startPlay, onSearch = { tab = Tab.SEARCH })
                         Tab.FAVS -> FavoritesScreen(refresh, openItem, startPlay)
                         Tab.GAMES -> GamesScreen(startPlay)
                         Tab.SEARCH -> SearchScreen(openItem, startPlay)

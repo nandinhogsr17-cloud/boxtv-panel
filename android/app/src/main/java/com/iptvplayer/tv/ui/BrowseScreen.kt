@@ -84,7 +84,7 @@ import kotlinx.coroutines.launch
  * Carrega de 60 em 60 conforme o usuário rola. Tecla MENU em um canal = favoritar.
  */
 @Composable
-fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> Unit) {
+fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> Unit, onSearch: (() -> Unit)? = null) {
     val app = LocalContext.current.applicationContext as IptvApp
     val isTv = rememberIsTv()
     val scope = rememberCoroutineScope()
@@ -145,14 +145,18 @@ fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> 
     if (type == "live" && isTv) {
         val focusedChannel = remember { mutableStateOf<Item?>(null) }
         val firstChannelFocus = remember { FocusRequester() }
+        var filterMode by remember(type) { mutableStateOf<String?>(null) } // null = normal, "fav" = favoritos
+        val displayedItems = remember(items.toList(), filterMode) {
+            if (filterMode == "fav") items.filter { it.favorite } else items
+        }
 
-        LaunchedEffect(items.size) {
-            if (focusedChannel.value == null && items.isNotEmpty()) {
-                focusedChannel.value = items.first()
+        LaunchedEffect(displayedItems.size) {
+            if (focusedChannel.value == null && displayedItems.isNotEmpty()) {
+                focusedChannel.value = displayedItems.first()
             }
         }
-        LaunchedEffect(items.isNotEmpty()) {
-            if (items.isNotEmpty()) {
+        LaunchedEffect(displayedItems.isNotEmpty()) {
+            if (displayedItems.isNotEmpty()) {
                 kotlinx.coroutines.delay(100)
                 runCatching { firstChannelFocus.requestFocus() }
             }
@@ -171,18 +175,38 @@ fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> 
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
-                item { Pill("🕒 Recentes", selected = false, onClick = { /* Recentes */ }, modifier = Modifier.fillMaxWidth()) }
-                item { Pill("★ Favoritos", selected = false, onClick = { /* Favoritos */ }, modifier = Modifier.fillMaxWidth()) }
-                item { Pill("🔍 Pesquisar", selected = false, onClick = { /* Pesquisar */ }, modifier = Modifier.fillMaxWidth()) }
+                item {
+                    Pill(
+                        "★ Favoritos",
+                        selected = filterMode == "fav",
+                        onClick = { filterMode = if (filterMode == "fav") null else "fav" },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                item {
+                    Pill(
+                        "🔍 Pesquisar",
+                        selected = false,
+                        onClick = { onSearch?.invoke() },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 item {
                     Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(Color.White.copy(alpha = 0.08f)))
                 }
-                item { Pill("Todos", selected = group == null, onClick = { group = null }, modifier = Modifier.fillMaxWidth()) }
+                item {
+                    Pill(
+                        "Todos",
+                        selected = group == null && filterMode == null,
+                        onClick = { group = null; filterMode = null },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 items(groups) { g ->
                     Pill(
                         "${g.name} (${g.count})",
-                        selected = group == g.name,
-                        onClick = { group = g.name },
+                        selected = group == g.name && filterMode == null,
+                        onClick = { group = g.name; filterMode = null },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -195,31 +219,43 @@ fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> 
                     .weight(1f)
                     .fillMaxHeight(),
             ) {
-                if (items.isEmpty()) {
-                    BrowseEmpty(error, loading) { attempt++ }
+                if (displayedItems.isEmpty()) {
+                    if (filterMode == "fav") {
+                        CenterBox {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Nenhum canal favoritado ainda.", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Spacer(Modifier.height(6.dp))
+                                Text("Aperte a tecla MENU no controle para favoritar qualquer canal.", color = TextSecondary, fontSize = 12.sp)
+                            }
+                        }
+                    } else {
+                        BrowseEmpty(error, loading) { attempt++ }
+                    }
                 } else {
                     LazyColumn(
                         Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         contentPadding = PaddingValues(vertical = 8.dp),
                     ) {
-                        itemsIndexed(items, key = { _, ch -> ch.id }, contentType = { _, _ -> "channel" }) { index, ch ->
+                        itemsIndexed(displayedItems, key = { _, ch -> ch.id }, contentType = { _, _ -> "channel" }) { index, ch ->
                             val isFirst = index == 0
                             ChannelRow(
                                 ch,
-                                onClick = { onPlay(PlayRequest(items.toList(), index)) },
+                                onClick = { onPlay(PlayRequest(displayedItems.toList(), index)) },
                                 onToggleFavorite = { toggleFavorite(ch.id) },
                                 number = index + 1,
                                 onFocused = { focusedChannel.value = ch },
                                 modifier = if (isFirst) Modifier.focusRequester(firstChannelFocus) else Modifier,
                             )
                         }
-                        item(key = "load-more:$type:${group.orEmpty()}") {
-                            LaunchedEffect(items.size, total, error, loading) {
-                                if (!loading && error == null && (total < 0 || items.size < total)) loadMore()
-                            }
-                            if (loading && total >= 0 && items.isNotEmpty()) {
-                                Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { Spinner() }
+                        if (filterMode == null) {
+                            item(key = "load-more:$type:${group.orEmpty()}") {
+                                LaunchedEffect(items.size, total, error, loading) {
+                                    if (!loading && error == null && (total < 0 || items.size < total)) loadMore()
+                                }
+                                if (loading && total >= 0 && items.isNotEmpty()) {
+                                    Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { Spinner() }
+                                }
                             }
                         }
                         if (error != null) item { BrowseLoadError(error!!) { attempt++ } }
@@ -232,8 +268,8 @@ fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> 
             LiveEpgPanel(
                 channelState = focusedChannel,
                 onWatch = { ch ->
-                    val idx = items.indexOfFirst { it.id == ch.id }
-                    if (idx >= 0) onPlay(PlayRequest(items.toList(), idx))
+                    val idx = displayedItems.indexOfFirst { it.id == ch.id }
+                    if (idx >= 0) onPlay(PlayRequest(displayedItems.toList(), idx))
                 },
                 onToggleFavorite = { toggleFavorite(it) },
             )
@@ -755,52 +791,59 @@ private fun LiveEpgPanel(
         }
 
         // ── Mini Player de Vídeo ─────────────────────────────────────────────
-        Box(
-            Modifier
+        FocusCard(
+            onClick = { onWatch(channel) },
+            modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.Black)
-                .clickable { onWatch(channel) },
-        ) {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        player = previewPlayer
-                        useController = false
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                        )
-                    }
-                },
-                update = { pv -> pv.player = previewPlayer },
-                modifier = Modifier.fillMaxSize(),
-            )
-            // "AO VIVO" badge vermelho no canto
+                .aspectRatio(16f / 9f),
+            shape = RoundedCornerShape(12.dp),
+            focusedScale = 1.03f,
+        ) { focused ->
             Box(
                 Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp)
-                    .background(Danger, RoundedCornerShape(5.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black),
             ) {
-                Text("● AO VIVO", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
-            }
-            // "OK tela cheia" dica no canto inferior direito
-            Box(
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(6.dp)
-                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(5.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            ) {
-                Text("OK tela cheia", color = Color.White.copy(alpha = 0.85f), fontSize = 9.sp)
-            }
-            // Poster como fallback enquanto o stream carrega
-            if (previewUrl == null) {
-                PosterBackground(channel, fit = true)
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            player = previewPlayer
+                            useController = false
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                            )
+                        }
+                    },
+                    update = { pv -> pv.player = previewPlayer },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                // "● AO VIVO" badge vermelho no canto
+                Box(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .background(Danger, RoundedCornerShape(5.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text("● AO VIVO", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                }
+                // "OK tela cheia" dica no canto inferior direito
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .background(if (focused) Accent else Color.Black.copy(alpha = 0.6f), RoundedCornerShape(5.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text(if (focused) "▶ OK para Tela Cheia" else "OK tela cheia", color = Color.White, fontSize = 9.sp, fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal)
+                }
+                // Poster como fallback enquanto o stream carrega
+                if (previewUrl == null) {
+                    PosterBackground(channel, fit = true)
+                }
             }
         }
 
