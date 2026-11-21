@@ -417,12 +417,8 @@ fun SettingsScreen(onLogout: () -> Unit = {}) {
                             SheetHeader("APARELHO", "Tela", closeFocus, close)
                             val screenSettings = ScreenController.current
                             InfoLine("Aparelho", screenInfo.summary)
-                            InfoLine(
-                                "Ajuste atual",
-                                "Automático" + if (screenSettings != ScreenMath.recommended(isTv)) " (com ajuste fino)" else "",
-                            )
-                            Text("O tamanho e as margens são calculados sozinhos para este aparelho. Use o ajuste fino só se algo ainda estiver cortado.", color = TextSecondary, fontSize = 11.sp, lineHeight = 15.sp)
-                            ActionButton("Ajuste fino (opcional)", onClick = { sheet = null; ScreenController.calibrationOpen = true })
+                            InfoLine("Ajuste", "100% Automático")
+                            Text("O tamanho e as margens são calculados e ajustados automaticamente para a melhor visualização nesta TV.", color = TextSecondary, fontSize = 11.sp, lineHeight = 15.sp)
                         }
                         "diag" -> {
                             SheetHeader("APARELHO", "Ajuda e diagnóstico", closeFocus, close)

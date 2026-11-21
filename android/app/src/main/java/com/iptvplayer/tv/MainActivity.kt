@@ -47,14 +47,4 @@ class MainActivity : FragmentActivity() {
             }
         }
     }
-
-    /** Tecla MENU do controle remoto abre o ajuste de tela em qualquer lugar do app. */
-    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_MENU) {
-            ScreenController.calibrationOpen = !ScreenController.calibrationOpen
-            if (!ScreenController.calibrationOpen) ScreenController.closePanel()
-            return true
-        }
-        return super.onKeyUp(keyCode, event)
-    }
 }

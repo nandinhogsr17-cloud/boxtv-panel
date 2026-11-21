@@ -246,16 +246,6 @@ fun MainShell(onLogout: () -> Unit = {}) {
             }
         }
 
-        run {
-            val info = LocalScreenInfo.current
-            Text(
-                "v24 ${info.deviceLabel} | ${tab.name} | ${info.widthDp.toInt()}x${info.heightDp.toInt()}dp x${"%.2f".format(info.factor)} | home=${TvDiag.home}",
-                color = Color.White.copy(alpha = 0.55f),
-                fontSize = 10.sp,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
-            )
-        }
-
         detail?.let { d ->
             DetailScreen(
                 item = d,

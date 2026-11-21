@@ -235,6 +235,7 @@ fun BrowseScreen(type: String, onOpen: (Item) -> Unit, onPlay: (PlayRequest) -> 
                     val idx = items.indexOfFirst { it.id == ch.id }
                     if (idx >= 0) onPlay(PlayRequest(items.toList(), idx))
                 },
+                onToggleFavorite = { toggleFavorite(it) },
             )
         }
     } else if (type == "live") {
@@ -677,6 +678,7 @@ private fun TvDetailPanel(focusedState: androidx.compose.runtime.State<Item?>, o
 private fun LiveEpgPanel(
     channelState: androidx.compose.runtime.State<Item?>,
     onWatch: (Item) -> Unit,
+    onToggleFavorite: (String) -> Unit,
 ) {
     val channel = channelState.value
     val context = LocalContext.current
@@ -758,7 +760,8 @@ private fun LiveEpgPanel(
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(12.dp))
-                .background(Color.Black),
+                .background(Color.Black)
+                .clickable { onWatch(channel) },
         ) {
             AndroidView(
                 factory = { ctx ->
@@ -862,8 +865,8 @@ private fun LiveEpgPanel(
         }
         Spacer(Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton("★ Favoritar", onClick = { /* toggle fav */ }, modifier = Modifier.weight(1f))
-            ActionButton("≡ Guia do dia", onClick = { /* guia completo */ }, modifier = Modifier.weight(1f))
+            ActionButton(if (channel.favorite) "★ Favoritado" else "☆ Favoritar", onClick = { onToggleFavorite(channel.id) }, modifier = Modifier.weight(1f))
+            ActionButton("≡ Guia do dia", onClick = { onWatch(channel) }, modifier = Modifier.weight(1f))
         }
         Spacer(Modifier.height(8.dp))
         ActionButton("▶ Assistir", onClick = { onWatch(channel) }, primary = true, fillWidth = true)

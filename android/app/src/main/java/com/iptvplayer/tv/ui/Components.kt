@@ -97,9 +97,11 @@ fun FocusCard(
             .border(if (focused) 2.5.dp else 0.dp, if (focused) FocusBorderBrush else NoBorderBrush, shape)
             .clip(shape)
             .onKeyEvent { ev ->
-                if ((ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter) && ev.type == KeyEventType.KeyUp) {
-                    onClick()
-                    true
+                if (ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter || ev.key == Key.ButtonA || ev.key == Key.Spacebar) {
+                    if (ev.type == KeyEventType.KeyDown) {
+                        onClick()
+                        true
+                    } else true
                 } else false
             }
             .clickable(

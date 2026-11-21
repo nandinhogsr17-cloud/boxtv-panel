@@ -34,15 +34,15 @@
       O melhor do entretenimento</div>
   </div>
   <script>
-    (function() {
+    (function () {
       function dismissSplash() {
         var s = document.getElementById('splash');
         if (!s) return;
         s.style.opacity = '0';
-        setTimeout(function() { if (s && s.parentNode) s.remove(); }, 500);
+        setTimeout(function () { if (s && s.parentNode) s.remove(); }, 500);
       }
-      window.addEventListener('DOMContentLoaded', function() { setTimeout(dismissSplash, 900); });
-      window.addEventListener('load', function() { setTimeout(dismissSplash, 400); });
+      window.addEventListener('DOMContentLoaded', function () { setTimeout(dismissSplash, 900); });
+      window.addEventListener('load', function () { setTimeout(dismissSplash, 400); });
       setTimeout(dismissSplash, 2000);
     })();
   </script>

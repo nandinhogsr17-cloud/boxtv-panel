@@ -184,15 +184,7 @@ fun ScreenSettingsHost(content: @Composable () -> Unit) {
                 Modifier
                     .fillMaxSize()
                     .padding(horizontal = padH, vertical = padV)
-                    .focusProperties { canFocus = !open }
             ) { content() }
-        }
-
-        if (open) {
-            val fixed = Density(base.density, base.fontScale.coerceIn(0.85f, 1.3f))
-            CompositionLocalProvider(LocalDensity provides fixed, LocalScreenInfo provides info) {
-                ScreenCalibrationOverlay(info = info, isTv = isTv, s = s)
-            }
         }
     }
 }
